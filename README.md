@@ -49,14 +49,19 @@ integrated into:
 
 #include "common.glsl"
 
+// Material marker (required)
 #pragma vultra material
+
+// Parameters
 #pragma vultra param baseColor semantic(BaseColor) default(1,1,1,1)
 #pragma vultra param metallic semantic(Metallic) default(0) range(0,1)
 #pragma vultra texture baseColorTex semantic(BaseColor)
-#pragma vultra blend off
-#pragma vultra depthTest on
-#pragma vultra depthWrite on
-#pragma vultra cull back
+
+// Render states
+#pragma vultra state Blend One Zero
+#pragma vultra state ZTest On
+#pragma vultra state ZWrite On
+#pragma vultra state Cull Back
 
 layout(set=0, binding=0) uniform Material
 {
