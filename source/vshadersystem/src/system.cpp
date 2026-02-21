@@ -57,8 +57,19 @@ namespace vshadersystem
             m += meta.hasMaterialDecl ? "material=1\n" : "material=0\n";
             m += "depthTest=" + std::to_string(meta.renderState.depthTest) + "\n";
             m += "depthWrite=" + std::to_string(meta.renderState.depthWrite) + "\n";
-            m += "blend=" + std::to_string(static_cast<int>(meta.renderState.blend)) + "\n";
+            m += "depthFunc=" + std::to_string(static_cast<int>(meta.renderState.depthFunc)) + "\n";
             m += "cull=" + std::to_string(static_cast<int>(meta.renderState.cull)) + "\n";
+            m += "blendEnable=" + std::to_string(meta.renderState.blendEnable) + "\n";
+            m += "srcColor=" + std::to_string(static_cast<int>(meta.renderState.srcColor)) + "\n";
+            m += "dstColor=" + std::to_string(static_cast<int>(meta.renderState.dstColor)) + "\n";
+            m += "colorOp=" + std::to_string(static_cast<int>(meta.renderState.colorOp)) + "\n";
+            m += "srcAlpha=" + std::to_string(static_cast<int>(meta.renderState.srcAlpha)) + "\n";
+            m += "dstAlpha=" + std::to_string(static_cast<int>(meta.renderState.dstAlpha)) + "\n";
+            m += "alphaOp=" + std::to_string(static_cast<int>(meta.renderState.alphaOp)) + "\n";
+            m += "colorMask=" + std::to_string(static_cast<int>(meta.renderState.colorMask)) + "\n";
+            m += "alphaToCoverage=" + std::to_string(meta.renderState.alphaToCoverage) + "\n";
+            m += "depthBiasFactor=" + std::to_string(meta.renderState.depthBiasFactor) + "\n";
+            m += "depthBiasUnits=" + std::to_string(meta.renderState.depthBiasUnits) + "\n";
 
             // params
             std::vector<std::string> keys;
@@ -73,9 +84,9 @@ namespace vshadersystem
                 if (pm.hasDefault)
                 {
                     m += "p:" + k + ":def=";
-                    for (double v : pm.defaultValue.v)
+                    for (uint8_t i : pm.defaultValue.valueBuffer)
                     {
-                        m += std::to_string(v);
+                        m += std::to_string(i);
                         m.push_back(',');
                     }
                     m.push_back('\n');
@@ -143,26 +154,13 @@ namespace vshadersystem
         mdesc.params.clear();
         mdesc.params.reserve(matBlock->members.size());
 
-        auto map_member_type = [&](const BlockMember& /*m*/) -> ParamType {
-            // spirv-cross in our reflection does not include full member type yet.
-            // For production usage, we should extend reflection to include member type information.
-            // In v1 we treat unknown as Float and rely on later extension.
-            //
-            // We can extend BlockMember with a small type signature:
-            // - base type (float/int/uint)
-            // - vec width
-            // - matrix dims
-            // - array stride/count
-            return ParamType::eFloat;
-        };
-
         for (const auto& mem : matBlock->members)
         {
             MaterialParamDesc pd;
             pd.name   = mem.name;
             pd.offset = mem.offset;
             pd.size   = mem.size;
-            pd.type   = map_member_type(mem);
+            pd.type   = mem.type;
 
             auto it = meta.params.find(mem.name);
             if (it != meta.params.end())
@@ -173,7 +171,7 @@ namespace vshadersystem
                 {
                     pd.hasDefault        = true;
                     pd.defaultValue      = it->second.defaultValue;
-                    pd.defaultValue.type = pd.type; // authoritative type after mapping
+                    pd.defaultValue.type = pd.type;
                 }
                 if (it->second.hasRange)
                 {
@@ -209,7 +207,7 @@ namespace vshadersystem
             mdesc.textures.push_back(std::move(td));
         }
 
-        // Render state hints
+        // Render state
         mdesc.renderState = meta.renderState;
 
         // Validation: metadata tokens must map to reflected symbols (strict)
@@ -328,7 +326,7 @@ namespace vshadersystem
 
         MaterialDescription mdesc;
         mdesc.materialBlockName = "Material";
-        mdesc.renderState       = RenderStateHints {};
+        mdesc.renderState       = RenderState {};
 
         ParsedMetadata emptyMeta;
         auto           vr = validate_and_build_mdesc(mdesc, bin.reflection, emptyMeta);

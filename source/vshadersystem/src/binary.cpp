@@ -1,5 +1,6 @@
 #include "vshadersystem/binary.hpp"
 #include "vshadersystem/hash.hpp"
+#include "vshadersystem/types.hpp"
 
 #include <cstdint>
 #include <cstring>
@@ -248,10 +249,28 @@ namespace vshadersystem
         write_u32(out, m.materialParamSize);
 
         // render state
-        write_u8(out, static_cast<uint8_t>(m.renderState.depthTest ? 1 : 0));
-        write_u8(out, static_cast<uint8_t>(m.renderState.depthWrite ? 1 : 0));
-        write_u8(out, static_cast<uint8_t>(m.renderState.blend));
+        write_u8(out, m.renderState.depthTest ? 1 : 0);
+        write_u8(out, m.renderState.depthWrite ? 1 : 0);
+        write_u8(out, static_cast<uint8_t>(m.renderState.depthFunc));
+
         write_u8(out, static_cast<uint8_t>(m.renderState.cull));
+
+        write_u8(out, m.renderState.blendEnable ? 1 : 0);
+
+        write_u8(out, static_cast<uint8_t>(m.renderState.srcColor));
+        write_u8(out, static_cast<uint8_t>(m.renderState.dstColor));
+        write_u8(out, static_cast<uint8_t>(m.renderState.colorOp));
+
+        write_u8(out, static_cast<uint8_t>(m.renderState.srcAlpha));
+        write_u8(out, static_cast<uint8_t>(m.renderState.dstAlpha));
+        write_u8(out, static_cast<uint8_t>(m.renderState.alphaOp));
+
+        write_u8(out, m.renderState.colorMask);
+
+        write_u8(out, m.renderState.alphaToCoverage ? 1 : 0);
+
+        write_bytes(out, &m.renderState.depthBiasFactor, sizeof(float));
+        write_bytes(out, &m.renderState.depthBiasUnits, sizeof(float));
 
         write_u32(out, static_cast<uint32_t>(m.params.size()));
         for (const auto& p : m.params)
@@ -266,7 +285,7 @@ namespace vshadersystem
             if (p.hasDefault)
             {
                 write_u8(out, static_cast<uint8_t>(p.defaultValue.type));
-                write_bytes(out, p.defaultValue.v, sizeof(p.defaultValue.v));
+                write_bytes(out, p.defaultValue.valueBuffer, sizeof(p.defaultValue.valueBuffer));
             }
 
             write_u8(out, static_cast<uint8_t>(p.hasRange ? 1 : 0));
@@ -304,20 +323,99 @@ namespace vshadersystem
             return Result<MaterialDescription>::err(
                 {ErrorCode::eDeserializeError, "MDES: failed to read material param size."});
 
-        uint8_t depthTest = 1, depthWrite = 1, blend = 0, cull = 1;
+        uint8_t depthTest  = 1;
+        uint8_t depthWrite = 1;
+        uint8_t depthFunc  = 0;
+        uint8_t cull       = 0;
+
+        uint8_t blendEnable = 0;
+        uint8_t srcColor    = 0;
+        uint8_t dstColor    = 0;
+        uint8_t colorOp     = 0;
+
+        uint8_t srcAlpha = 0;
+        uint8_t dstAlpha = 0;
+        uint8_t alphaOp  = 0;
+
+        uint8_t colorMask = 0;
+
+        uint8_t alphaToCoverage = 0;
+
+        float depthBiasFactor = 0.0f;
+        float depthBiasUnits  = 0.0f;
+
         if (!read_u8(p, e, depthTest))
             return Result<MaterialDescription>::err({ErrorCode::eDeserializeError, "MDES: failed to read depthTest."});
+
         if (!read_u8(p, e, depthWrite))
             return Result<MaterialDescription>::err({ErrorCode::eDeserializeError, "MDES: failed to read depthWrite."});
-        if (!read_u8(p, e, blend))
-            return Result<MaterialDescription>::err({ErrorCode::eDeserializeError, "MDES: failed to read blend."});
+
+        if (!read_u8(p, e, depthFunc))
+            return Result<MaterialDescription>::err({ErrorCode::eDeserializeError, "MDES: failed to read depthFunc."});
+
         if (!read_u8(p, e, cull))
             return Result<MaterialDescription>::err({ErrorCode::eDeserializeError, "MDES: failed to read cull."});
 
+        if (!read_u8(p, e, blendEnable))
+            return Result<MaterialDescription>::err(
+                {ErrorCode::eDeserializeError, "MDES: failed to read blendEnable."});
+
+        if (!read_u8(p, e, srcColor))
+            return Result<MaterialDescription>::err({ErrorCode::eDeserializeError, "MDES: failed to read srcColor."});
+
+        if (!read_u8(p, e, dstColor))
+            return Result<MaterialDescription>::err({ErrorCode::eDeserializeError, "MDES: failed to read dstColor."});
+
+        if (!read_u8(p, e, colorOp))
+            return Result<MaterialDescription>::err({ErrorCode::eDeserializeError, "MDES: failed to read colorOp."});
+
+        if (!read_u8(p, e, srcAlpha))
+            return Result<MaterialDescription>::err({ErrorCode::eDeserializeError, "MDES: failed to read srcAlpha."});
+
+        if (!read_u8(p, e, dstAlpha))
+            return Result<MaterialDescription>::err({ErrorCode::eDeserializeError, "MDES: failed to read dstAlpha."});
+
+        if (!read_u8(p, e, alphaOp))
+            return Result<MaterialDescription>::err({ErrorCode::eDeserializeError, "MDES: failed to read alphaOp."});
+
+        if (!read_u8(p, e, colorMask))
+            return Result<MaterialDescription>::err({ErrorCode::eDeserializeError, "MDES: failed to read colorMask."});
+
+        if (!read_u8(p, e, alphaToCoverage))
+            return Result<MaterialDescription>::err(
+                {ErrorCode::eDeserializeError, "MDES: failed to read alphaToCoverage."});
+
+        if (p + sizeof(float) * 2 > e)
+            return Result<MaterialDescription>::err({ErrorCode::eDeserializeError, "MDES: failed to read depthBias."});
+
+        std::memcpy(&depthBiasFactor, p, sizeof(float));
+        p += sizeof(float);
+
+        std::memcpy(&depthBiasUnits, p, sizeof(float));
+        p += sizeof(float);
+
         m.renderState.depthTest  = (depthTest != 0);
         m.renderState.depthWrite = (depthWrite != 0);
-        m.renderState.blend      = static_cast<BlendMode>(blend);
-        m.renderState.cull       = static_cast<CullMode>(cull);
+        m.renderState.depthFunc  = static_cast<CompareOp>(depthFunc);
+
+        m.renderState.cull = static_cast<CullMode>(cull);
+
+        m.renderState.blendEnable = (blendEnable != 0);
+
+        m.renderState.srcColor = static_cast<BlendFactor>(srcColor);
+        m.renderState.dstColor = static_cast<BlendFactor>(dstColor);
+        m.renderState.colorOp  = static_cast<BlendOp>(colorOp);
+
+        m.renderState.srcAlpha = static_cast<BlendFactor>(srcAlpha);
+        m.renderState.dstAlpha = static_cast<BlendFactor>(dstAlpha);
+        m.renderState.alphaOp  = static_cast<BlendOp>(alphaOp);
+
+        m.renderState.colorMask = static_cast<ColorMaskFlags>(colorMask);
+
+        m.renderState.alphaToCoverage = (alphaToCoverage != 0);
+
+        m.renderState.depthBiasFactor = depthBiasFactor;
+        m.renderState.depthBiasUnits  = depthBiasUnits;
 
         uint32_t paramCount = 0;
         if (!read_u32(p, e, paramCount))
@@ -360,11 +458,11 @@ namespace vshadersystem
                     return Result<MaterialDescription>::err(
                         {ErrorCode::eDeserializeError, "MDES: failed to read default type."});
                 pd.defaultValue.type = static_cast<ParamType>(dt);
-                if (p + sizeof(pd.defaultValue.v) > e)
+                if (p + sizeof(pd.defaultValue.valueBuffer) > e)
                     return Result<MaterialDescription>::err(
                         {ErrorCode::eDeserializeError, "MDES: failed to read default values."});
-                std::memcpy(pd.defaultValue.v, p, sizeof(pd.defaultValue.v));
-                p += sizeof(pd.defaultValue.v);
+                std::memcpy(pd.defaultValue.valueBuffer, p, sizeof(pd.defaultValue.valueBuffer));
+                p += sizeof(pd.defaultValue.valueBuffer);
             }
 
             uint8_t hasRange = 0;

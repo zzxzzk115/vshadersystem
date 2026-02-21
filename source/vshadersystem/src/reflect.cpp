@@ -40,6 +40,56 @@ namespace vshadersystem
     }
 
     // ------------------------------------------------------------
+    // type mapping
+    // ------------------------------------------------------------
+    static ParamType map_spirv_type(const spirv_cross::SPIRType& t)
+    {
+        using namespace spirv_cross;
+
+        switch (t.basetype)
+        {
+            case SPIRType::Float:
+
+                if (t.columns == 1)
+                {
+                    switch (t.vecsize)
+                    {
+                        case 1:
+                            return ParamType::eFloat;
+                        case 2:
+                            return ParamType::eVec2;
+                        case 3:
+                            return ParamType::eVec3;
+                        case 4:
+                            return ParamType::eVec4;
+                    }
+                }
+
+                if (t.columns == 3)
+                    return ParamType::eMat3;
+
+                if (t.columns == 4)
+                    return ParamType::eMat4;
+
+                break;
+
+            case SPIRType::Int:
+                return ParamType::eInt;
+
+            case SPIRType::UInt:
+                return ParamType::eUInt;
+
+            case SPIRType::Boolean:
+                return ParamType::eBool;
+
+            default:
+                break;
+        }
+
+        return ParamType::eFloat;
+    }
+
+    // ------------------------------------------------------------
     // reflection
     // ------------------------------------------------------------
     Result<ShaderReflection> reflect_spirv(const std::vector<uint32_t>& spirv, const ReflectionOptions& opt)
@@ -137,6 +187,7 @@ namespace vshadersystem
                         m.name   = comp.get_member_name(r.base_type_id, i);
                         m.offset = comp.type_struct_member_offset(type, i);
                         m.size   = comp.get_declared_struct_member_size(type, i);
+                        m.type   = map_spirv_type(comp.get_type(type.member_types[i]));
 
                         blk.members.push_back(m);
                     }

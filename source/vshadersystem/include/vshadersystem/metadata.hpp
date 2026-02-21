@@ -31,8 +31,8 @@ namespace vshadersystem
         std::unordered_map<std::string, ParamMeta>   params;
         std::unordered_map<std::string, TextureMeta> textures;
 
-        RenderStateHints renderState {};
-        bool             renderStateExplicit = false;
+        RenderState renderState {};
+        bool        renderStateExplicit = false;
     };
 
     // Parse `#pragma vultra ...` lines. We keep grammar intentionally small and strict.

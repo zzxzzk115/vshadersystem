@@ -92,23 +92,63 @@ namespace vshadersystem
         return false;
     }
 
-    static inline bool parse_blend(std::string_view s, BlendMode& out)
+    static bool parse_blend_factor(std::string_view s, BlendFactor& out)
     {
-        if (s == "off")
+        if (s == "one")
         {
-            out = BlendMode::eOff;
+            out = BlendFactor::eOne;
             return true;
         }
-        if (s == "alpha")
+        if (s == "zero")
         {
-            out = BlendMode::eAlpha;
+            out = BlendFactor::eZero;
             return true;
         }
-        if (s == "add")
+
+        if (s == "srcalpha")
         {
-            out = BlendMode::eAdd;
+            out = BlendFactor::eSrcAlpha;
             return true;
         }
+        if (s == "oneminussrcalpha")
+        {
+            out = BlendFactor::eOneMinusSrcAlpha;
+            return true;
+        }
+
+        if (s == "dstalpha")
+        {
+            out = BlendFactor::eDstAlpha;
+            return true;
+        }
+        if (s == "oneminusdstalpha")
+        {
+            out = BlendFactor::eOneMinusDstAlpha;
+            return true;
+        }
+
+        if (s == "srccolor")
+        {
+            out = BlendFactor::eSrcColor;
+            return true;
+        }
+        if (s == "oneminussrccolor")
+        {
+            out = BlendFactor::eOneMinusSrcColor;
+            return true;
+        }
+
+        if (s == "dstcolor")
+        {
+            out = BlendFactor::eDstColor;
+            return true;
+        }
+        if (s == "oneminusdstcolor")
+        {
+            out = BlendFactor::eOneMinusDstColor;
+            return true;
+        }
+
         return false;
     }
 
@@ -132,7 +172,7 @@ namespace vshadersystem
         return false;
     }
 
-    static inline bool parse_double(std::string_view s, double& out)
+    static inline bool parse_float(std::string_view s, float& out)
     {
         // We parse with std::from_chars for locale-free behavior.
         const char* b = s.data();
@@ -141,7 +181,7 @@ namespace vshadersystem
         // We keep a simple fallback here.
         try
         {
-            out = std::stod(std::string(s));
+            out = std::stof(std::string(s));
             return true;
         }
         catch (...)
@@ -150,7 +190,7 @@ namespace vshadersystem
         }
     }
 
-    static inline bool parse_parenthesized_list(std::string_view s, std::vector<double>& out)
+    static inline bool parse_parenthesized_list(std::string_view s, std::vector<float>& out)
     {
         // expects "(...)" with comma-separated numbers
         if (s.size() < 2 || s.front() != '(' || s.back() != ')')
@@ -164,8 +204,8 @@ namespace vshadersystem
             item = trim(item);
             if (item.empty())
                 return false;
-            double v = 0.0;
-            if (!parse_double(item, v))
+            float v = 0.0f;
+            if (!parse_float(item, v))
                 return false;
             out.push_back(v);
         }
@@ -181,6 +221,23 @@ namespace vshadersystem
             return false;
         payload = token.substr(name.size() + 1, token.size() - name.size() - 2);
         return true;
+    }
+
+    void write_default(ParamDefault& dst, const std::vector<float>& values)
+    {
+        // DO NOT touch dst.type here
+        // type will be determined later by reflection
+
+        std::memset(dst.valueBuffer, 0, sizeof(dst.valueBuffer));
+
+        const size_t count = std::min(values.size(), static_cast<size_t>(16));
+
+        float temp[16] = {};
+
+        for (size_t i = 0; i < count; ++i)
+            temp[i] = values[i];
+
+        std::memcpy(dst.valueBuffer, temp, count * sizeof(float));
     }
 
     Result<ParsedMetadata> parse_vultra_metadata(std::string_view sourceText)
@@ -267,7 +324,7 @@ namespace vshadersystem
 
                     if (parse_attr(toks[t], "default", payload))
                     {
-                        std::vector<double> values;
+                        std::vector<float> values;
                         if (!parse_parenthesized_list(std::string("(") + std::string(payload) + ")", values))
                         {
                             // Accept "default(1,2,3)" where payload is "1,2,3" (already without parentheses by
@@ -280,18 +337,14 @@ namespace vshadersystem
                         }
                         meta.hasDefault = true;
 
-                        // Store raw values; type will be validated later after reflection.
-                        meta.defaultValue.type = ParamType::eFloat;
-                        std::fill(std::begin(meta.defaultValue.v), std::end(meta.defaultValue.v), 0.0);
-                        for (size_t n = 0; n < values.size() && n < 16; ++n)
-                            meta.defaultValue.v[n] = values[n];
+                        write_default(meta.defaultValue, values);
                         continue;
                     }
 
                     if (parse_attr(toks[t], "range", payload))
                     {
-                        std::vector<double> values;
-                        std::string         wrapped = "(" + std::string(payload) + ")";
+                        std::vector<float> values;
+                        std::string        wrapped = "(" + std::string(payload) + ")";
                         if (!parse_parenthesized_list(wrapped, values) || values.size() != 2)
                             return Result<ParsedMetadata>::err(
                                 {ErrorCode::eParseError, "range(min,max) expects exactly two numbers."});
@@ -342,14 +395,26 @@ namespace vshadersystem
             }
             else if (keyword == "blend")
             {
-                if (toks.size() < 4)
+                if (toks.size() < 5)
+                    return Result<ParsedMetadata>::err({ErrorCode::eParseError, "blend requires src dst"});
+
+                BlendFactor src;
+                BlendFactor dst;
+
+                if (!parse_blend_factor(toks[3], src))
                     return Result<ParsedMetadata>::err(
-                        {ErrorCode::eParseError, "blend pragma requires a mode: off|alpha|add"});
-                BlendMode b;
-                if (!parse_blend(toks[3], b))
+                        {ErrorCode::eParseError, "Unknown blend source factor: " + std::string(toks[3])});
+
+                if (!parse_blend_factor(toks[4], dst))
                     return Result<ParsedMetadata>::err(
-                        {ErrorCode::eParseError, "Unknown blend mode: " + std::string(toks[3])});
-                out.renderState.blend   = b;
+                        {ErrorCode::eParseError, "Unknown blend destination factor: " + std::string(toks[4])});
+
+                out.renderState.blendEnable = true;
+                out.renderState.srcColor    = src;
+                out.renderState.dstColor    = dst;
+                out.renderState.srcAlpha    = src;
+                out.renderState.dstAlpha    = dst;
+
                 out.renderStateExplicit = true;
             }
             else if (keyword == "depthTest")
