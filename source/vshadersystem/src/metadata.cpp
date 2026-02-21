@@ -23,12 +23,12 @@ namespace vshadersystem
 
     static inline bool parse_bool_token(std::string_view tok, bool& out)
     {
-        if (tok == "on")
+        if (tok == "On")
         {
             out = true;
             return true;
         }
-        if (tok == "off")
+        if (tok == "Off")
         {
             out = false;
             return true;
@@ -94,56 +94,56 @@ namespace vshadersystem
 
     static bool parse_blend_factor(std::string_view s, BlendFactor& out)
     {
-        if (s == "one")
+        if (s == "One")
         {
             out = BlendFactor::eOne;
             return true;
         }
-        if (s == "zero")
+        if (s == "Zero")
         {
             out = BlendFactor::eZero;
             return true;
         }
 
-        if (s == "srcalpha")
+        if (s == "SrcAlpha")
         {
             out = BlendFactor::eSrcAlpha;
             return true;
         }
-        if (s == "oneminussrcalpha")
+        if (s == "OneMinusSrcAlpha")
         {
             out = BlendFactor::eOneMinusSrcAlpha;
             return true;
         }
 
-        if (s == "dstalpha")
+        if (s == "DstAlpha")
         {
             out = BlendFactor::eDstAlpha;
             return true;
         }
-        if (s == "oneminusdstalpha")
+        if (s == "OneMinusDstAlpha")
         {
             out = BlendFactor::eOneMinusDstAlpha;
             return true;
         }
 
-        if (s == "srccolor")
+        if (s == "SrcColor")
         {
             out = BlendFactor::eSrcColor;
             return true;
         }
-        if (s == "oneminussrccolor")
+        if (s == "OneMinusSrcColor")
         {
             out = BlendFactor::eOneMinusSrcColor;
             return true;
         }
 
-        if (s == "dstcolor")
+        if (s == "DstColor")
         {
             out = BlendFactor::eDstColor;
             return true;
         }
-        if (s == "oneminusdstcolor")
+        if (s == "OneMinusDstColor")
         {
             out = BlendFactor::eOneMinusDstColor;
             return true;
@@ -154,19 +154,94 @@ namespace vshadersystem
 
     static inline bool parse_cull(std::string_view s, CullMode& out)
     {
-        if (s == "none")
+        if (s == "None")
         {
             out = CullMode::eNone;
             return true;
         }
-        if (s == "back")
+        if (s == "Back")
         {
             out = CullMode::eBack;
             return true;
         }
-        if (s == "front")
+        if (s == "Front")
         {
             out = CullMode::eFront;
+            return true;
+        }
+        return false;
+    }
+
+    static inline bool parse_blend_op(std::string_view s, BlendOp& out)
+    {
+        if (s == "Add")
+        {
+            out = BlendOp::eAdd;
+            return true;
+        }
+        if (s == "Subtract")
+        {
+            out = BlendOp::eSubtract;
+            return true;
+        }
+        if (s == "ReverseSubtract")
+        {
+            out = BlendOp::eReverseSubtract;
+            return true;
+        }
+        if (s == "Min")
+        {
+            out = BlendOp::eMin;
+            return true;
+        }
+        if (s == "Max")
+        {
+            out = BlendOp::eMax;
+            return true;
+        }
+        return false;
+    }
+
+    static inline bool parse_compare_op(std::string_view s, CompareOp& out)
+    {
+        if (s == "Never")
+        {
+            out = CompareOp::eNever;
+            return true;
+        }
+        if (s == "Less")
+        {
+            out = CompareOp::eLess;
+            return true;
+        }
+        if (s == "Equal")
+        {
+            out = CompareOp::eEqual;
+            return true;
+        }
+        if (s == "LessOrEqual")
+        {
+            out = CompareOp::eLessOrEqual;
+            return true;
+        }
+        if (s == "Greater")
+        {
+            out = CompareOp::eGreater;
+            return true;
+        }
+        if (s == "NotEqual")
+        {
+            out = CompareOp::eNotEqual;
+            return true;
+        }
+        if (s == "GreaterOrEqual")
+        {
+            out = CompareOp::eGreaterOrEqual;
+            return true;
+        }
+        if (s == "Always")
+        {
+            out = CompareOp::eAlways;
             return true;
         }
         return false;
@@ -393,61 +468,161 @@ namespace vshadersystem
                 // Accept token but no storage yet; kept for future extension.
                 continue;
             }
-            else if (keyword == "blend")
+            else if (keyword == "state")
             {
-                if (toks.size() < 5)
-                    return Result<ParsedMetadata>::err({ErrorCode::eParseError, "blend requires src dst"});
+                auto subKeyword = toks[3];
+                if (subKeyword == "Blend")
+                {
+                    if (toks.size() < 6)
+                        return Result<ParsedMetadata>::err({ErrorCode::eParseError, "Blend requires src dst"});
 
-                BlendFactor src;
-                BlendFactor dst;
+                    BlendFactor src;
+                    BlendFactor dst;
 
-                if (!parse_blend_factor(toks[3], src))
-                    return Result<ParsedMetadata>::err(
-                        {ErrorCode::eParseError, "Unknown blend source factor: " + std::string(toks[3])});
+                    if (!parse_blend_factor(toks[4], src))
+                        return Result<ParsedMetadata>::err(
+                            {ErrorCode::eParseError, "Unknown blend source factor: " + std::string(toks[4])});
 
-                if (!parse_blend_factor(toks[4], dst))
-                    return Result<ParsedMetadata>::err(
-                        {ErrorCode::eParseError, "Unknown blend destination factor: " + std::string(toks[4])});
+                    if (!parse_blend_factor(toks[5], dst))
+                        return Result<ParsedMetadata>::err(
+                            {ErrorCode::eParseError, "Unknown blend destination factor: " + std::string(toks[5])});
 
-                out.renderState.blendEnable = true;
-                out.renderState.srcColor    = src;
-                out.renderState.dstColor    = dst;
-                out.renderState.srcAlpha    = src;
-                out.renderState.dstAlpha    = dst;
+                    out.renderState.blendEnable = true;
+                    out.renderState.srcColor    = src;
+                    out.renderState.dstColor    = dst;
+                    out.renderState.srcAlpha    = src;
+                    out.renderState.dstAlpha    = dst;
 
-                out.renderStateExplicit = true;
-            }
-            else if (keyword == "depthTest")
-            {
-                if (toks.size() < 4)
-                    return Result<ParsedMetadata>::err({ErrorCode::eParseError, "depthTest pragma requires on|off"});
-                bool v = true;
-                if (!parse_bool_token(toks[3], v))
-                    return Result<ParsedMetadata>::err({ErrorCode::eParseError, "depthTest expects on|off"});
-                out.renderState.depthTest = v;
-                out.renderStateExplicit   = true;
-            }
-            else if (keyword == "depthWrite")
-            {
-                if (toks.size() < 4)
-                    return Result<ParsedMetadata>::err({ErrorCode::eParseError, "depthWrite pragma requires on|off"});
-                bool v = true;
-                if (!parse_bool_token(toks[3], v))
-                    return Result<ParsedMetadata>::err({ErrorCode::eParseError, "depthWrite expects on|off"});
-                out.renderState.depthWrite = v;
-                out.renderStateExplicit    = true;
-            }
-            else if (keyword == "cull")
-            {
-                if (toks.size() < 4)
-                    return Result<ParsedMetadata>::err(
-                        {ErrorCode::eParseError, "cull pragma requires none|back|front"});
-                CullMode c;
-                if (!parse_cull(toks[3], c))
-                    return Result<ParsedMetadata>::err(
-                        {ErrorCode::eParseError, "Unknown cull mode: " + std::string(toks[3])});
-                out.renderState.cull    = c;
-                out.renderStateExplicit = true;
+                    out.renderStateExplicit = true;
+                }
+                else if (subKeyword == "BlendOp")
+                {
+                    if (toks.size() < 6)
+                        return Result<ParsedMetadata>::err(
+                            {ErrorCode::eParseError, "BlendOp requires colorOp alphaOp"});
+
+                    BlendOp colorOp;
+                    BlendOp alphaOp;
+
+                    if (!parse_blend_op(toks[4], colorOp))
+                        return Result<ParsedMetadata>::err(
+                            {ErrorCode::eParseError, "Unknown blend color operation: " + std::string(toks[4])});
+
+                    if (!parse_blend_op(toks[5], alphaOp))
+                        return Result<ParsedMetadata>::err(
+                            {ErrorCode::eParseError, "Unknown blend alpha operation: " + std::string(toks[5])});
+
+                    out.renderState.blendEnable = true;
+                    out.renderState.colorOp     = colorOp;
+                    out.renderState.alphaOp     = alphaOp;
+
+                    out.renderStateExplicit = true;
+                }
+                else if (subKeyword == "ZTest")
+                {
+                    if (toks.size() < 5)
+                        return Result<ParsedMetadata>::err({ErrorCode::eParseError, "ZTest pragma requires On|Off"});
+                    bool v = true;
+                    if (!parse_bool_token(toks[4], v))
+                        return Result<ParsedMetadata>::err({ErrorCode::eParseError, "ZTest expects On|Off"});
+                    out.renderState.depthTest = v;
+                    out.renderStateExplicit   = true;
+                }
+                else if (subKeyword == "ZWrite")
+                {
+                    if (toks.size() < 5)
+                        return Result<ParsedMetadata>::err({ErrorCode::eParseError, "ZWrite pragma requires On|Off"});
+                    bool v = true;
+                    if (!parse_bool_token(toks[4], v))
+                        return Result<ParsedMetadata>::err({ErrorCode::eParseError, "ZWrite expects On|Off"});
+                    out.renderState.depthWrite = v;
+                    out.renderStateExplicit    = true;
+                }
+                else if (subKeyword == "CompareOp")
+                {
+                    if (toks.size() < 5)
+                        return Result<ParsedMetadata>::err(
+                            {ErrorCode::eParseError, "CompareOp pragma requires a comparison function"});
+                    CompareOp f;
+                    if (!parse_compare_op(toks[4], f))
+                        return Result<ParsedMetadata>::err(
+                            {ErrorCode::eParseError, "Unknown compare op: " + std::string(toks[4])});
+                    out.renderState.depthFunc = f;
+                    out.renderStateExplicit   = true;
+                }
+                else if (subKeyword == "Cull")
+                {
+                    if (toks.size() < 5)
+                        return Result<ParsedMetadata>::err(
+                            {ErrorCode::eParseError, "Cull pragma requires None|Back|Front"});
+                    CullMode c;
+                    if (!parse_cull(toks[4], c))
+                        return Result<ParsedMetadata>::err(
+                            {ErrorCode::eParseError, "Unknown cull mode: " + std::string(toks[4])});
+                    out.renderState.cull    = c;
+                    out.renderStateExplicit = true;
+                }
+                else if (subKeyword == "AlphaToCoverage")
+                {
+                    if (toks.size() < 5)
+                        return Result<ParsedMetadata>::err({ErrorCode::eParseError, "AlphaToCoverage requires On|Off"});
+                    bool v = true;
+                    if (!parse_bool_token(toks[4], v))
+                        return Result<ParsedMetadata>::err({ErrorCode::eParseError, "AlphaToCoverage expects On|Off"});
+                    out.renderState.alphaToCoverage = v;
+                    out.renderStateExplicit         = true;
+                }
+                else if (subKeyword == "ColorMask")
+                {
+                    if (toks.size() < 5)
+                        return Result<ParsedMetadata>::err(
+                            {ErrorCode::eParseError, "ColorMask requires a combination of R,G,B,A"});
+                    uint8_t mask = 0;
+                    for (char c : toks[4])
+                    {
+                        switch (c)
+                        {
+                            case 'R':
+                                mask |= static_cast<uint8_t>(ColorMaskFlagBits::eColorMaskR);
+                                break;
+                            case 'G':
+                                mask |= static_cast<uint8_t>(ColorMaskFlagBits::eColorMaskG);
+                                break;
+                            case 'B':
+                                mask |= static_cast<uint8_t>(ColorMaskFlagBits::eColorMaskB);
+                                break;
+                            case 'A':
+                                mask |= static_cast<uint8_t>(ColorMaskFlagBits::eColorMaskA);
+                                break;
+                            default:
+                                return Result<ParsedMetadata>::err(
+                                    {ErrorCode::eParseError, "Unknown color mask character: " + std::string(1, c)});
+                        }
+                    }
+                    out.renderState.colorMask = mask;
+                    out.renderStateExplicit   = true;
+                }
+                else if (subKeyword == "DepthBias")
+                {
+                    if (toks.size() < 6)
+                        return Result<ParsedMetadata>::err(
+                            {ErrorCode::eParseError, "DepthBias requires two float values: factor and units"});
+
+                    float factor = 0.0f;
+                    float units  = 0.0f;
+
+                    if (!parse_float(toks[4], factor))
+                        return Result<ParsedMetadata>::err(
+                            {ErrorCode::eParseError, "Invalid DepthBias factor value: " + std::string(toks[4])});
+
+                    if (!parse_float(toks[5], units))
+                        return Result<ParsedMetadata>::err(
+                            {ErrorCode::eParseError, "Invalid DepthBias units value: " + std::string(toks[5])});
+
+                    out.renderState.depthBiasFactor = factor;
+                    out.renderState.depthBiasUnits  = units;
+                    out.renderStateExplicit         = true;
+                }
             }
             else
             {
