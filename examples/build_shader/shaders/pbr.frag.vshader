@@ -5,6 +5,7 @@
 
 #include "common.glsl"
 
+// Material marker (Required!)
 #pragma vultra material
 
 // ---------------------------
@@ -43,10 +44,14 @@
 // ---------------------------
 // Render state
 // ---------------------------
-#pragma vultra blend one zero // no blending
-#pragma vultra depthTest on
-#pragma vultra depthWrite on
-#pragma vultra cull back
+#pragma vultra state Blend One Zero // no blending
+#pragma vultra state BlendOp Add Add // just for test
+#pragma vultra state ZTest On
+#pragma vultra state CompareOp Less
+#pragma vultra state ZWrite On
+#pragma vultra state Cull Back
+#pragma vultra state AlphaToCoverage Off
+#pragma vultra state DepthBias 0.1 0.1 // just for test
 
 // ---------------------------
 // Bindless texture array declaration (semantic only for tooling)

@@ -190,7 +190,6 @@ namespace vshadersystem
         // --------------------------------------------------------
         // Depth
         // --------------------------------------------------------
-
         bool      depthTest  = true;
         bool      depthWrite = true;
         CompareOp depthFunc  = CompareOp::eLessOrEqual;
@@ -198,13 +197,11 @@ namespace vshadersystem
         // --------------------------------------------------------
         // Raster
         // --------------------------------------------------------
-
         CullMode cull = CullMode::eBack;
 
         // --------------------------------------------------------
         // Blend
         // --------------------------------------------------------
-
         bool blendEnable = false;
 
         BlendFactor srcColor = BlendFactor::eOne;
@@ -218,19 +215,16 @@ namespace vshadersystem
         // --------------------------------------------------------
         // Color mask
         // --------------------------------------------------------
-
         ColorMaskFlags colorMask = eColorMaskRGBA;
 
         // --------------------------------------------------------
         // Alpha to coverage
         // --------------------------------------------------------
-
         bool alphaToCoverage = false;
 
         // --------------------------------------------------------
         // Depth bias
         // --------------------------------------------------------
-
         float depthBiasFactor = 0.0f;
         float depthBiasUnits  = 0.0f;
     };
