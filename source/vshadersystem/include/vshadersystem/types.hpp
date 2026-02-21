@@ -105,13 +105,76 @@ namespace vshadersystem
     // ------------------------------------------------------------
     // Render state
     // ------------------------------------------------------------
-    enum class BlendMode : uint8_t
+
+    // ------------------------------------------------------------
+    // Depth compare op (ZTest)
+    // ------------------------------------------------------------
+    enum class CompareOp : uint8_t
     {
-        eOff = 0,
-        eAlpha,
-        eAdd
+        eNever = 0,
+        eLess,
+        eEqual,
+        eLessOrEqual,
+        eGreater,
+        eNotEqual,
+        eGreaterOrEqual,
+        eAlways
     };
 
+    // ------------------------------------------------------------
+    // Blend factors
+    // ------------------------------------------------------------
+    enum class BlendFactor : uint8_t
+    {
+        eZero = 0,
+        eOne,
+
+        eSrcColor,
+        eOneMinusSrcColor,
+
+        eDstColor,
+        eOneMinusDstColor,
+
+        eSrcAlpha,
+        eOneMinusSrcAlpha,
+
+        eDstAlpha,
+        eOneMinusDstAlpha
+    };
+
+    // ------------------------------------------------------------
+    // Blend operations
+    // ------------------------------------------------------------
+    enum class BlendOp : uint8_t
+    {
+        eAdd = 0,
+        eSubtract,
+        eReverseSubtract,
+        eMin,
+        eMax
+    };
+
+    // ------------------------------------------------------------
+    // Color mask flags
+    // ------------------------------------------------------------
+    using ColorMaskFlags = uint8_t;
+
+    enum ColorMaskFlagBits : ColorMaskFlags
+    {
+        eColorMaskNone = 0,
+
+        eColorMaskR = 1 << 0,
+        eColorMaskG = 1 << 1,
+        eColorMaskB = 1 << 2,
+        eColorMaskA = 1 << 3,
+
+        eColorMaskRGB  = eColorMaskR | eColorMaskG | eColorMaskB,
+        eColorMaskRGBA = eColorMaskR | eColorMaskG | eColorMaskB | eColorMaskA
+    };
+
+    // ------------------------------------------------------------
+    // Cull mode
+    // ------------------------------------------------------------
     enum class CullMode : uint8_t
     {
         eNone = 0,
@@ -119,12 +182,57 @@ namespace vshadersystem
         eFront
     };
 
-    struct RenderStateHints
+    // ------------------------------------------------------------
+    // RenderState)
+    // ------------------------------------------------------------
+    struct RenderState
     {
+        // --------------------------------------------------------
+        // Depth
+        // --------------------------------------------------------
+
         bool      depthTest  = true;
         bool      depthWrite = true;
-        BlendMode blend      = BlendMode::eOff;
-        CullMode  cull       = CullMode::eBack;
+        CompareOp depthFunc  = CompareOp::eLessOrEqual;
+
+        // --------------------------------------------------------
+        // Raster
+        // --------------------------------------------------------
+
+        CullMode cull = CullMode::eBack;
+
+        // --------------------------------------------------------
+        // Blend
+        // --------------------------------------------------------
+
+        bool blendEnable = false;
+
+        BlendFactor srcColor = BlendFactor::eOne;
+        BlendFactor dstColor = BlendFactor::eZero;
+        BlendOp     colorOp  = BlendOp::eAdd;
+
+        BlendFactor srcAlpha = BlendFactor::eOne;
+        BlendFactor dstAlpha = BlendFactor::eZero;
+        BlendOp     alphaOp  = BlendOp::eAdd;
+
+        // --------------------------------------------------------
+        // Color mask
+        // --------------------------------------------------------
+
+        ColorMaskFlags colorMask = eColorMaskRGBA;
+
+        // --------------------------------------------------------
+        // Alpha to coverage
+        // --------------------------------------------------------
+
+        bool alphaToCoverage = false;
+
+        // --------------------------------------------------------
+        // Depth bias
+        // --------------------------------------------------------
+
+        float depthBiasFactor = 0.0f;
+        float depthBiasUnits  = 0.0f;
     };
 
     // ------------------------------------------------------------
@@ -149,6 +257,7 @@ namespace vshadersystem
         std::string name;
         uint32_t    offset = 0;
         uint32_t    size   = 0;
+        ParamType   type   = ParamType::eFloat;
     };
 
     struct BlockLayout
@@ -190,8 +299,8 @@ namespace vshadersystem
 
     struct ParamDefault
     {
-        ParamType type  = ParamType::eFloat;
-        double    v[16] = {};
+        ParamType type            = ParamType::eFloat;
+        uint8_t   valueBuffer[64] = {}; // enough for mat4
     };
 
     struct MaterialParamDesc
@@ -234,7 +343,7 @@ namespace vshadersystem
         std::vector<MaterialParamDesc>   params;
         std::vector<MaterialTextureDesc> textures;
 
-        RenderStateHints renderState;
+        RenderState renderState;
     };
 
     // ------------------------------------------------------------
