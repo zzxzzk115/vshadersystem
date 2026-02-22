@@ -3,178 +3,19 @@
 #include "vshadersystem/compiler.hpp"
 #include "vshadersystem/hash.hpp"
 #include "vshadersystem/metadata.hpp"
+#include "vshadersystem/parser_utils.hpp"
 #include "vshadersystem/reflect.hpp"
+#include "vshadersystem/shader_id.hpp"
+#include "vshadersystem/variant_key.hpp"
 
 #include <algorithm>
 #include <cstring>
 #include <filesystem>
+#include <iostream>
 #include <unordered_map>
 
 namespace vshadersystem
 {
-    static inline bool parse_bool_value(std::string_view s, uint32_t& out)
-    {
-        if (s.empty())
-        {
-            out = 1;
-            return true;
-        }
-        if (s == "1" || s == "true" || s == "TRUE" || s == "True")
-        {
-            out = 1;
-            return true;
-        }
-        if (s == "0" || s == "false" || s == "FALSE" || s == "False")
-        {
-            out = 0;
-            return true;
-        }
-        return false;
-    }
-
-    static inline Result<uint32_t> parse_keyword_value(const KeywordDecl& d, std::string_view raw)
-    {
-        if (d.kind == KeywordValueKind::eBool)
-        {
-            uint32_t v = 0;
-            if (!parse_bool_value(raw, v))
-                return Result<uint32_t>::err(
-                    {ErrorCode::eParseError, "Invalid bool value for keyword '" + d.name + "'"});
-            return Result<uint32_t>::ok(v);
-        }
-
-        // Enum
-        if (raw.empty())
-            return Result<uint32_t>::ok(d.defaultValue);
-
-        // Accept numeric index
-        {
-            bool     ok  = true;
-            uint32_t idx = 0;
-            for (char c : raw)
-            {
-                if (c < '0' || c > '9')
-                {
-                    ok = false;
-                    break;
-                }
-                idx = idx * 10u + static_cast<uint32_t>(c - '0');
-            }
-            if (ok)
-            {
-                if (idx >= d.enumValues.size())
-                    return Result<uint32_t>::err(
-                        {ErrorCode::eParseError, "Enum index out of range for keyword '" + d.name + "'"});
-                return Result<uint32_t>::ok(idx);
-            }
-        }
-
-        // Accept enumerant name
-        for (uint32_t i = 0; i < static_cast<uint32_t>(d.enumValues.size()); ++i)
-        {
-            if (d.enumValues[i] == raw)
-                return Result<uint32_t>::ok(i);
-        }
-
-        return Result<uint32_t>::err(
-            {ErrorCode::eParseError, "Unknown enum value '" + std::string(raw) + "' for keyword '" + d.name + "'"});
-    }
-
-    static inline Result<uint64_t> compute_variant_hash(const ParsedMetadata&     meta,
-                                                        const CompileOptions&     opt,
-                                                        const EngineKeywordsFile* engineKw,
-                                                        uint64_t                  sourceHash)
-    {
-        // Only permutation keywords contribute to the compiled variant hash.
-        // Runtime keywords are represented by runtime parameters.
-        // Special keywords are intended for specialization constants and do not require separate SPIR-V blobs.
-
-        struct KV
-        {
-            uint64_t nameHash;
-            uint32_t value;
-        };
-
-        std::vector<KV> kvs;
-        kvs.reserve(meta.keywords.size());
-
-        // Build a define map for fast lookup
-        std::unordered_map<std::string, std::string> defMap;
-        defMap.reserve(opt.defines.size());
-        for (const auto& d : opt.defines)
-            defMap[d.name] = d.value;
-
-        for (const auto& k : meta.keywords)
-        {
-            if (k.dispatch != KeywordDispatch::ePermutation)
-                continue;
-
-            // Resolution order:
-            //   - Compile defines (-D)
-            //   - engine_keywords.vkw set (global scope only)
-            //   - shader default
-            uint32_t value = k.defaultValue;
-
-            auto it = defMap.find(k.name);
-            if (it != defMap.end())
-            {
-                auto pv = parse_keyword_value(k, it->second);
-                if (!pv.isOk())
-                    return Result<uint64_t>::err(pv.error());
-                value = pv.value();
-            }
-            else if (engineKw && k.scope == KeywordScope::eGlobal)
-            {
-                auto iv = engineKw->values.find(k.name);
-                if (iv != engineKw->values.end())
-                {
-                    auto pv = parse_keyword_value(k, iv->second);
-                    if (!pv.isOk())
-                        return Result<uint64_t>::err(pv.error());
-                    value = pv.value();
-                }
-            }
-
-            KV kv;
-            kv.nameHash = xxhash64(k.name);
-            kv.value    = value;
-            kvs.push_back(kv);
-        }
-
-        std::sort(kvs.begin(), kvs.end(), [](const KV& a, const KV& b) {
-            if (a.nameHash != b.nameHash)
-                return a.nameHash < b.nameHash;
-            return a.value < b.value;
-        });
-
-        // Serialize into a small stable buffer for hashing
-        std::vector<uint8_t> buf;
-        buf.reserve(32 + kvs.size() * 16);
-
-        auto append_u64 = [&](uint64_t v) {
-            uint8_t b[8];
-            std::memcpy(b, &v, 8);
-            buf.insert(buf.end(), b, b + 8);
-        };
-        auto append_u32 = [&](uint32_t v) {
-            uint8_t b[4];
-            std::memcpy(b, &v, 4);
-            buf.insert(buf.end(), b, b + 4);
-        };
-
-        append_u64(sourceHash);
-        append_u32(static_cast<uint32_t>(static_cast<uint8_t>(opt.stage)));
-        append_u32(static_cast<uint32_t>(kvs.size()));
-        for (const auto& kv : kvs)
-        {
-            append_u64(kv.nameHash);
-            append_u32(kv.value);
-            append_u32(0); // reserved for future (e.g., scope, width)
-        }
-
-        return Result<uint64_t>::ok(xxhash64(buf.data(), buf.size()));
-    }
-
     static inline std::string normalize_define_list(const std::vector<Define>& defs)
     {
         // Deterministic ordering for stable cache keys.
@@ -436,8 +277,9 @@ namespace vshadersystem
             return Result<BuildResult>::err(metaR.error());
         const ParsedMetadata meta = std::move(metaR.value());
 
-        const uint64_t buildHash  = compute_build_hash(req.source, req.options, meta);
-        const uint64_t sourceHash = xxhash64(req.source.sourceText);
+        const uint64_t buildHash    = compute_build_hash(req.source, req.options, meta);
+        const uint64_t sourceHash   = xxhash64(req.source.sourceText);
+        const uint64_t shaderIdHash = shader_id_hash_from_virtual_path(req.source.virtualPath);
 
         BuildResult out;
         out.fromCache = false;
@@ -466,19 +308,68 @@ namespace vshadersystem
             return Result<BuildResult>::err(r.error());
 
         ShaderBinary bin;
-        bin.stage       = req.options.stage;
-        bin.spirv       = std::move(c.value().spirv);
-        bin.spirvHash   = xxhash64_words(bin.spirv);
-        bin.contentHash = sourceHash;
-        bin.reflection  = std::move(r.value());
+        bin.stage        = req.options.stage;
+        bin.spirv        = std::move(c.value().spirv);
+        bin.spirvHash    = xxhash64_words(bin.spirv);
+        bin.contentHash  = sourceHash;
+        bin.shaderIdHash = shaderIdHash;
+        bin.reflection   = std::move(r.value());
 
         // Compute variant hash (permutation keywords only)
         {
+            VariantKey key;
+
+            key.setShaderIdHash(shaderIdHash);
+            key.setStage(req.options.stage);
+
+            // collect permutation keywords
             const EngineKeywordsFile* kw = req.hasEngineKeywords ? &req.engineKeywords : nullptr;
-            auto                      vh = compute_variant_hash(meta, req.options, kw, sourceHash);
-            if (!vh.isOk())
-                return Result<BuildResult>::err(vh.error());
-            bin.variantHash = vh.value();
+
+            for (const auto& kd : meta.keywords)
+            {
+                if (kd.dispatch != KeywordDispatch::ePermutation)
+                    continue;
+
+                uint32_t value = kd.defaultValue;
+
+                // override from -D
+                for (const auto& d : req.options.defines)
+                {
+                    if (d.name == kd.name)
+                    {
+                        auto pv = parse_keyword_value(kd, d.value);
+
+                        if (!pv.isOk())
+                            return Result<BuildResult>::err(pv.error());
+
+                        value = pv.value();
+                        std::cout << "Override keyword '" << kd.name << "' from command line define: " << value << "\n";
+
+                        break;
+                    }
+                }
+
+                // override from engine keywords
+                if (kw)
+                {
+                    auto it = kw->values.find(kd.name);
+
+                    if (it != kw->values.end())
+                    {
+                        auto pv = parse_keyword_value(kd, it->second);
+
+                        if (!pv.isOk())
+                            return Result<BuildResult>::err(pv.error());
+
+                        value = pv.value();
+                        std::cout << "Override keyword '" << kd.name << "' from engine keywords: " << value << "\n";
+                    }
+                }
+
+                key.set(kd.name, value);
+            }
+
+            bin.variantHash = key.build();
         }
 
         // Build MaterialDescription

@@ -347,7 +347,8 @@ namespace vshadersystem
     // ------------------------------------------------------------
     struct ShaderBinary
     {
-        uint64_t contentHash = 0;
+        uint64_t contentHash  = 0;
+        uint64_t shaderIdHash = 0; // stable logical shader id hash for runtime lookup
         // Hash of the resolved permutation keyword set for this compiled binary.
         // Used as the primary lookup key inside a .vshlib.
         // 0 means "not computed" (older files).

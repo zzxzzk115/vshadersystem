@@ -74,8 +74,8 @@ namespace vshadersystem
     }
 
     // Read the library file and return TOC + blob data.
-    Result<ShaderLibrary> read_vslib(const std::string& filePath);
+    Result<ShaderLibrary> read_vshlib_file(const std::string& filePath);
 
     // Find a shader blob by (keyHash, stage). Returns empty span if not found.
-    Result<std::vector<uint8_t>> extract_vslib_blob(const ShaderLibrary& lib, uint64_t keyHash, ShaderStage stage);
+    Result<std::vector<uint8_t>> extract_vshlib_blob(const ShaderLibrary& lib, uint64_t keyHash, ShaderStage stage);
 } // namespace vshadersystem

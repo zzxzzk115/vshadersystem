@@ -406,6 +406,10 @@ static int cmd_packlib(int argc, char** argv)
         e.keyHash = (bin.variantHash != 0) ? bin.variantHash : bin.contentHash;
         e.stage   = bin.stage;
 
+        log_verbose("processing " + path + " shaderIdHash=" + std::to_string(bin.shaderIdHash) + " contentHash=" +
+                    std::to_string(bin.contentHash) + " variantHash=" + std::to_string(bin.variantHash) +
+                    " stage=" + std::to_string(static_cast<int>(bin.stage)));
+
         const uint64_t sig =
             xxhash64(&e.keyHash, sizeof(e.keyHash), static_cast<uint64_t>(static_cast<uint8_t>(e.stage)));
         if (seen.find(sig) != seen.end())
@@ -1061,7 +1065,8 @@ static int cmd_compile(int argc, char** argv)
 
 static int cmd_cook(int argc, char** argv)
 {
-    // vshaderc cook -m manifest.vcook -o out/shaders.vshlib [--keywords-file engine_keywords.vkw] [-I dir] [--cache dir]
+    // vshaderc cook -m manifest.vcook -o out/shaders.vshlib [--keywords-file engine_keywords.vkw] [-I dir] [--cache
+    // dir]
     // [--no-cache] [-j N|--jobs N] [--skip-invalid] [--verbose]
     std::string              manifestPath;
     std::string              outLibPath;
@@ -1434,6 +1439,10 @@ static int cmd_cook(int argc, char** argv)
         ShaderLibraryEntry e;
         e.keyHash = (bin.variantHash != 0) ? bin.variantHash : bin.contentHash;
         e.stage   = bin.stage;
+
+        log_verbose("processing " + job->input + " shaderIdHash=" + std::to_string(bin.shaderIdHash) + " contentHash=" +
+                    std::to_string(bin.contentHash) + " variantHash=" + std::to_string(bin.variantHash) +
+                    " keyHash=" + std::to_string(e.keyHash) + " stage=" + std::to_string(static_cast<int>(e.stage)));
 
         const uint64_t sig =
             xxhash64(&e.keyHash, sizeof(e.keyHash), static_cast<uint64_t>(static_cast<uint8_t>(e.stage)));

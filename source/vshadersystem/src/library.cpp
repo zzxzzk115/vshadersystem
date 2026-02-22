@@ -150,7 +150,7 @@ namespace vshadersystem
         return Result<void>::ok();
     }
 
-    Result<ShaderLibrary> read_vslib(const std::string& filePath)
+    Result<ShaderLibrary> read_vshlib_file(const std::string& filePath)
     {
         std::ifstream f(filePath, std::ios::binary);
         if (!f)
@@ -182,7 +182,8 @@ namespace vshadersystem
                 return Result<ShaderLibrary>::err(
                     {ErrorCode::eDeserializeError, "VSHLIB keywords chunk out of file range."});
             if (hdr.keywordsOffset < hdr.tocOffset + hdr.tocSize)
-                return Result<ShaderLibrary>::err({ErrorCode::eDeserializeError, "VSHLIB keywords chunk overlaps TOC."});
+                return Result<ShaderLibrary>::err(
+                    {ErrorCode::eDeserializeError, "VSHLIB keywords chunk overlaps TOC."});
         }
 
         const uint64_t blobBegin = sizeof(FileHeader);
@@ -241,7 +242,7 @@ namespace vshadersystem
         return Result<ShaderLibrary>::ok(std::move(lib));
     }
 
-    Result<std::vector<uint8_t>> extract_vslib_blob(const ShaderLibrary& lib, uint64_t keyHash, ShaderStage stage)
+    Result<std::vector<uint8_t>> extract_vshlib_blob(const ShaderLibrary& lib, uint64_t keyHash, ShaderStage stage)
     {
         for (const auto& e : lib.entries)
         {
