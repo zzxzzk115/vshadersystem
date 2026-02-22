@@ -4,6 +4,7 @@
 
 #include <cstdint>
 #include <cstring>
+#include <filesystem>
 #include <fstream>
 
 #if defined(_WIN32)

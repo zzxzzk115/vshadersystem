@@ -1,0 +1,27 @@
+name: Build macOS
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+    branches: [master]
+
+jobs:
+  build:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - uses: xmake-io/github-action-setup-xmake@v1
+        with:
+          xmake-version: latest
+          actions-cache-folder: '.xmake-cache'
+          build-cache: true
+
+      - name: Cache Build
+        run: xmake f --policies=build.ccache:y -y
+
+      - name: Build
+        run: xmake repo -u && xmake -vD -y
