@@ -1,31 +1,39 @@
 # vshadersystem
 
-vshadersystem is a standalone shader compilation and material reflection
-pipeline.
+vshadersystem is a standalone shader compilation, variant generation,
+and material reflection pipeline.
+
+It compiles GLSL shaders into SPIR-V, generates shader variants using
+keywords, and packages them into runtime‑ready shader libraries.
 
 ## Overview
 
 **vshadersystem** compiles GLSL shaders into SPIR-V and extracts
 reflection and material metadata into a unified binary format.
 
-It is designed as a **standalone shader pipeline library** and can be
+It supports both:
+
+- Single shader binaries (`.vshbin`)
+- Shader libraries with variants (`.vshlib`)
+
+It is designed as a standalone shader pipeline library and can be
 integrated into:
 
--   Game engines
--   Rendering frameworks
--   Offline asset pipelines
--   Tools and editors
+- Game engines
+- Rendering frameworks
+- Offline asset pipelines
+- Tools and editors
 
 ## Features
 
--   GLSL → SPIR-V compilation (via glslang)
--   Reflection extraction (via spirv-cross)
--   Custom material semantic system (`#pragma`)
--   Production-grade shader binary format (`.vshbin`)
--   Deterministic hashing
--   Dependency tracking (`#include`)
--   Library-friendly API
--   Cross‑platform support
+- GLSL → SPIR-V compilation (via glslang)
+- Reflection extraction (via spirv-cross)
+- Custom material semantic system (`#pragma`)
+- Production-grade shader binary format (`.vshbin`)
+- Deterministic hashing
+- Dependency tracking (`#include`)
+- Library-friendly API
+- Cross‑platform support
 
 ## Pipeline
 
@@ -44,10 +52,17 @@ integrated into:
 
 ## Shader Example
 
-``` glsl
+```glsl
 #version 460
 
 #include "common.glsl"
+
+// Keywords
+#pragma keyword permute global USE_SHADOW=1
+#pragma keyword permute pass PASS=GBUFFER|FORWARD
+#pragma keyword runtime material USE_CLEARCOAT=0
+#pragma keyword runtime global DEBUG_VIEW=NONE|NORMAL|ALBEDO
+#pragma keyword special USE_BINDLESS=1
 
 // Material marker (required)
 #pragma vultra material
@@ -79,40 +94,133 @@ void main()
 }
 ```
 
+## Shader Keywords
+
+Keywords control shader variant generation and runtime behaviour.
+
+Keywords are declared using:
+
+```
+#pragma keyword <dispatch> <name>
+```
+
+Where `<dispatch>` can be:
+
+### permute
+
+Compile‑time permutation keyword.
+
+Each value produces a separate shader variant and a unique `variantHash`.
+
+Example:
+
+```
+#pragma keyword permute USE_SHADOW
+```
+
+Cook manifest:
+
+```
+variant = USE_SHADOW=0
+variant = USE_SHADOW=1
+```
+
+### runtime
+
+Runtime keyword.
+
+Does not generate additional variants.
+
+Example:
+
+```
+#pragma keyword runtime USE_FOG
+```
+
+### special
+
+Specialization constant keyword.
+
+Example:
+
+```
+#pragma keyword special LIGHT_COUNT
+```
+
+### global keywords (engine_keywords.vkw)
+
+Example:
+
+```
+USE_SHADOW=1
+LIGHT_COUNT=4
+```
+
 ## Binary Format
 
-`.vshbin` contains:
+### .vshbin
 
 Header
 
--   magic
--   version
--   flags
--   hashes
+- magic
+- version
+- flags
+- hashes
 
 Chunks
 
--   SPRV → SPIR-V
--   REFL → reflection
--   MDES → material description
+- SPRV → SPIR-V
+- REFL → reflection
+- MDES → material description
+
+### .vshlib
+
+Shader library containing:
+
+- Multiple shader variants
+- Fast runtime lookup table
+- Embedded engine keywords (optional)
 
 ## CLI Usage
 
 ```
 Usage:
-  vshaderc -i <input.vshader> -o <output.vshbin> -S <stage> [options]
+  vshaderc compile -i <input.vshader> -o <output.vshbin> -S <stage> [options]
+  vshaderc cook -m <manifest.vcook> -o <output.vshlib> [options]
+  vshaderc cook-merge -o <merged.vcook> <a.vcook> <b.vcook> ... [options]
+  vshaderc packlib -o <output.vshlib> [--keywords-file <path.vkw>] <in1.vshbin> <in2.vshbin> ...
 
 Stages:
   vert, frag, comp, task, mesh, rgen, rmiss, rchit, rahit, rint
 
-Options:
-  -I <dir>         Add include directory (repeatable)
-  -D <NAME=VALUE>  Define macro (repeatable; VALUE optional)
-  --no-cache       Disable cache
-  --cache <dir>    Cache directory (default: .vshader_cache)
+Options (compile):
+  -I <dir>               Add include directory (repeatable)
+  -D <NAME=VALUE>        Define macro (repeatable; VALUE optional)
+  --keywords-file <vkw>  Load engine_keywords.vkw and inject global permute values if shader declares them
+  --no-cache             Disable cache
+  --cache <dir>          Cache directory (default: .vshader_cache)
+  --verbose              Verbose logging
+
+Options (cook):
+  -m, --manifest <vcook> Input manifest
+  -o <vshlib>             Output library
+  -I <dir>               Extra include directory (repeatable, appended)
+  --keywords-file <vkw>  Apply engine_keywords.vkw for global permute defaults + embed into vshlib
+  --no-cache             Disable cache
+  --cache <dir>          Cache directory (default: .vshader_cache)
+  -j, --jobs <N>         (Ignored) Cook forced single-thread (determinism, avoid deadlocks)
+  --skip-invalid          Skip variants failing only_if constraints
+  --verbose               Verbose pruning + entrypoint probe
+
+Options (cook-merge):
+  -o <merged.vcook>       Output manifest
+  --keywords-file <vkw>   Force keywords_file=... in output (otherwise only kept if all inputs match)
+  --verbose               Print merge summary
 
 Examples:
-  vshaderc -i shaders/pbr.frag.vshader -o out/pbr.frag.vshbin -S frag -I shaders/include -D USE_FOO=1
+  vshaderc compile -i shaders/pbr.frag.vshader -o out/pbr.frag.vshbin -S frag -I shaders/include -D USE_FOO=1
+  vshaderc cook -m examples/keywords/shader_cook.vcook -o out/shaders.vshlib --keywords-file examples/keywords/engine_keywords.vkw --verbose
+  vshaderc packlib -o out/shaders.vshlib --keywords-file engine_keywords.vkw out/*.vshbin
 ```
 
 ## Library Usage
@@ -132,28 +240,66 @@ input.virtualPath = "shader.frag.vshader";
 CompileOptions opt;
 opt.stage = ShaderStage::eFrag;
 
+// Keyword values are passed via defines
+opt.defines.push_back({"USE_SHADOW", "1"});
+
 auto result = compile_shader(input, opt);
 
 write_vshbin_file("shader.vshbin", result.value());
 ```
 
-Load shader:
+Cook shader library:
+
+``` cpp
+#include <vshadersystem/cook.hpp>
+
+using namespace vshadersystem;
+
+CookOptions opt;
+
+opt.manifestPath = "shader_cook.vcook";
+opt.outputPath   = "shaders.vshlib";
+
+auto result = cook_shader_library(opt);
+
+if (!result.isOk())
+{
+    printf("Cook failed: %s\n", result.error().message.c_str());
+}
+```
+
+Merge cook manifests:
+
+``` cpp
+#include <vshadersystem/cook.hpp>
+
+using namespace vshadersystem;
+
+CookMergeOptions opt;
+
+opt.outputPath = "merged.vcook";
+
+opt.inputs.push_back("a.vcook");
+opt.inputs.push_back("b.vcook");
+
+auto result = cook_merge_manifests(opt);
+```
+
+Load shader binary:
 
 ``` cpp
 #include <vshadersystem/binary.hpp>
 
 auto shader = read_vshbin_file("shader.vshbin").value();
-
-// You can get SPIR-V binary code, shader reflection information, and material description from it.
 ```
 
 ## Build Instructions
 
 Prerequisites:
 
--   Git
--   XMake
--   Visual Studio, GCC, or Clang
+- Git
+- XMake
+- Visual Studio, GCC, or Clang
 
 Clone:
 
@@ -166,7 +312,7 @@ Build:
 
 Run the example:
 
-	xmake run example_build_shader
+    xmake run example_build_shader
 
 ## License
 

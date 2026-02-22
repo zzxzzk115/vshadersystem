@@ -37,6 +37,9 @@ int main()
     req.source.sourceText   = sourceText;
     req.options.stage       = ShaderStage::eFrag;
     req.options.includeDirs = {"shaders/include"};
+    // Defines
+    req.options.defines.push_back({"USE_SHADOW", "1"});
+    req.options.defines.push_back({"LIGHT_COUNT", "4"});
 
     auto r = build_shader(req);
 

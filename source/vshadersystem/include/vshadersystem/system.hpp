@@ -1,6 +1,7 @@
 #pragma once
 
 #include "vshadersystem/compiler.hpp"
+#include "vshadersystem/engine_keywords.hpp"
 #include "vshadersystem/result.hpp"
 #include "vshadersystem/types.hpp"
 
@@ -12,6 +13,11 @@ namespace vshadersystem
     {
         SourceInput    source;
         CompileOptions options;
+
+        // Optional engine-wide keyword values (typically global scope), used for
+        // resolving permutation keyword values and computing ShaderBinary::variantHash.
+        bool              hasEngineKeywords = false;
+        EngineKeywordsFile engineKeywords;
 
         // Cache behavior
         bool        enableCache = true;

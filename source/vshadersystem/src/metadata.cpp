@@ -1,4 +1,5 @@
 #include "vshadersystem/metadata.hpp"
+#include "vshadersystem/keywords.hpp"
 
 #include <algorithm>
 #include <cctype>
@@ -340,7 +341,9 @@ namespace vshadersystem
             while (!s.empty() && std::isspace(static_cast<unsigned char>(s.front())))
                 s.remove_prefix(1);
 
-            if (!starts_with(s, "#pragma vultra"))
+            const bool isVultra  = starts_with(s, "#pragma vultra");
+            const bool isKeyword = starts_with(s, "#pragma keyword");
+            if (!isVultra && !isKeyword)
                 continue;
 
             // Tokenize by spaces (attributes stay as a single token because they contain parentheses, no spaces
@@ -363,10 +366,175 @@ namespace vshadersystem
             }
 
             if (toks.size() < 3)
-                return Result<ParsedMetadata>::err(
-                    {ErrorCode::eParseError, "Invalid #pragma vultra line (too few tokens)."});
+            {
+                if (isVultra)
+                    return Result<ParsedMetadata>::err(
+                        {ErrorCode::eParseError, "Invalid #pragma vultra line (too few tokens)."});
+                else
+                    return Result<ParsedMetadata>::err(
+                        {ErrorCode::eParseError, "Invalid #pragma keyword line (too few tokens)."});
+            }
 
+            // ------------------------------------------------------------
+            // #pragma keyword ...
+            // Grammar (minimal, whitespace-tokenized):
+            //   #pragma keyword <permute|runtime|special> [<global|material|pass|local>] <NAME>[=<DEFAULT_OR_ENUMS>]
+            // Examples:
+            //   #pragma keyword permute ALPHA_TEST
+            //   #pragma keyword runtime global DEBUG_VIEW=NONE|NORMAL|ALBEDO
+            //   #pragma keyword permute SURFACE=OPAQUE|CUTOUT|TRANSPARENT
+            // Notes:
+            // - Enum values are separated by '|'
+            // - Default value for enum is the first enumerant unless explicitly provided as NAME=Value (Value must
+            // match an enumerant).
+            // - For bool, default is 0 unless NAME=1 is provided.
+            // ------------------------------------------------------------
+            if (isKeyword)
+            {
+                if (toks.size() < 4)
+                    return Result<ParsedMetadata>::err(
+                        {ErrorCode::eParseError, "keyword pragma requires at least <dispatch> <name>."});
+
+                KeywordDecl decl;
+
+                auto parse_dispatch = [&](std::string_view s, KeywordDispatch& outDispatch) -> bool {
+                    if (s == "permute")
+                    {
+                        outDispatch = KeywordDispatch::ePermutation;
+                        return true;
+                    }
+                    if (s == "runtime")
+                    {
+                        outDispatch = KeywordDispatch::eRuntime;
+                        return true;
+                    }
+                    if (s == "special")
+                    {
+                        outDispatch = KeywordDispatch::eSpecialization;
+                        return true;
+                    }
+                    return false;
+                };
+                auto parse_scope = [&](std::string_view s, KeywordScope& outScope) -> bool {
+                    if (s == "global")
+                    {
+                        outScope = KeywordScope::eGlobal;
+                        return true;
+                    }
+                    if (s == "material")
+                    {
+                        outScope = KeywordScope::eMaterial;
+                        return true;
+                    }
+                    if (s == "pass")
+                    {
+                        outScope = KeywordScope::ePass;
+                        return true;
+                    }
+                    if (s == "local" || s == "shader" || s == "shaderlocal")
+                    {
+                        outScope = KeywordScope::eShaderLocal;
+                        return true;
+                    }
+                    return false;
+                };
+
+                if (!parse_dispatch(toks[2], decl.dispatch))
+                    return Result<ParsedMetadata>::err(
+                        {ErrorCode::eParseError, "Unknown keyword dispatch: " + std::string(toks[2])});
+
+                size_t idx = 3;
+                // optional scope
+                {
+                    KeywordScope sc;
+                    if (idx < toks.size() && parse_scope(toks[idx], sc))
+                    {
+                        decl.scope = sc;
+                        ++idx;
+                    }
+                }
+
+                if (idx >= toks.size())
+                    return Result<ParsedMetadata>::err(
+                        {ErrorCode::eParseError, "keyword pragma requires a keyword name."});
+
+                // Parse NAME or NAME=...
+                std::string_view nameToken = toks[idx++];
+                std::string_view namePart  = nameToken;
+                std::string_view rhsPart   = {};
+                auto             eqPos     = nameToken.find('=');
+                if (eqPos != std::string_view::npos)
+                {
+                    namePart = nameToken.substr(0, eqPos);
+                    rhsPart  = nameToken.substr(eqPos + 1);
+                }
+
+                decl.name = std::string(namePart);
+
+                if (!rhsPart.empty())
+                {
+                    // Decide bool vs enum
+                    if (rhsPart == "0" || rhsPart == "1")
+                    {
+                        decl.kind         = KeywordValueKind::eBool;
+                        decl.defaultValue = (rhsPart == "1") ? 1u : 0u;
+                    }
+                    else
+                    {
+                        decl.kind = KeywordValueKind::eEnum;
+
+                        // Split by '|'
+                        size_t p0 = 0;
+                        while (p0 <= rhsPart.size())
+                        {
+                            auto p1 = rhsPart.find('|', p0);
+                            if (p1 == std::string_view::npos)
+                                p1 = rhsPart.size();
+                            auto item = rhsPart.substr(p0, p1 - p0);
+                            if (!item.empty())
+                                decl.enumValues.emplace_back(item);
+                            if (p1 == rhsPart.size())
+                                break;
+                            p0 = p1 + 1;
+                        }
+
+                        if (decl.enumValues.empty())
+                            return Result<ParsedMetadata>::err(
+                                {ErrorCode::eParseError, "Enum keyword requires at least one value: " + decl.name});
+
+                        // default = first enumerant
+                        decl.defaultValue = 0;
+                    }
+                }
+                else
+                {
+                    // No rhs => bool default 0
+                    decl.kind         = KeywordValueKind::eBool;
+                    decl.defaultValue = 0;
+                }
+
+                // Remaining tokens are treated as raw constraints (optional), stored verbatim.
+                // We keep this flexible so you can later implement only_if(...) parsing without breaking sources.
+                if (idx < toks.size())
+                {
+                    std::string c;
+                    for (size_t t = idx; t < toks.size(); ++t)
+                    {
+                        if (!c.empty())
+                            c.push_back(' ');
+                        c += std::string(toks[t]);
+                    }
+                    decl.constraint = c;
+                }
+
+                out.keywords.push_back(std::move(decl));
+                continue;
+            }
+
+            // ------------------------------------------------------------
+            // #pragma vultra ...
             // toks[0] = #pragma, toks[1] = vultra, toks[2] = keyword
+            // ------------------------------------------------------------
             const auto keyword = toks[2];
 
             if (keyword == "material")

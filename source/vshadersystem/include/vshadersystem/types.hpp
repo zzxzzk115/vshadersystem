@@ -11,7 +11,8 @@ namespace vshadersystem
     // ------------------------------------------------------------
     enum class ShaderStage : uint8_t
     {
-        eVert = 0,
+        eUnknown = 0,
+        eVert,
         eFrag,
         eComp,
         eTask,
@@ -20,23 +21,24 @@ namespace vshadersystem
         eRmiss,
         eRchit,
         eRahit,
-        eRint
+        eRint,
     };
 
     using ShaderStageFlags = uint32_t;
 
     enum ShaderStageFlagBits : ShaderStageFlags
     {
-        eStageVert  = 1 << 0,
-        eStageFrag  = 1 << 1,
-        eStageComp  = 1 << 2,
-        eStageTask  = 1 << 3,
-        eStageMesh  = 1 << 4,
-        eStageRgen  = 1 << 5,
-        eStageRmiss = 1 << 6,
-        eStageRchit = 1 << 7,
-        eStageRahit = 1 << 8,
-        eStageRint  = 1 << 9
+        eStateUnknown = 0,
+        eStageVert    = 1 << 0,
+        eStageFrag    = 1 << 1,
+        eStageComp    = 1 << 2,
+        eStageTask    = 1 << 3,
+        eStageMesh    = 1 << 4,
+        eStageRgen    = 1 << 5,
+        eStageRmiss   = 1 << 6,
+        eStageRchit   = 1 << 7,
+        eStageRahit   = 1 << 8,
+        eStageRint    = 1 << 9
     };
 
     // ------------------------------------------------------------
@@ -346,6 +348,10 @@ namespace vshadersystem
     struct ShaderBinary
     {
         uint64_t contentHash = 0;
+        // Hash of the resolved permutation keyword set for this compiled binary.
+        // Used as the primary lookup key inside a .vshlib.
+        // 0 means "not computed" (older files).
+        uint64_t variantHash = 0;
         uint64_t spirvHash   = 0;
 
         ShaderStage stage = ShaderStage::eFrag;

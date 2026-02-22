@@ -463,7 +463,7 @@ namespace vshadersystem
         // Messages: keep Vulkan/SPIR-V rules. Cascading errors improves logs.
         constexpr auto kMessages =
             EShMessages {EShMsgDefault | EShMsgSpvRules | EShMsgVulkanRules | EShMsgCascadingErrors
-#if _DEBUG
+#ifndef NDEBUG
                          | EShMsgKeepUncalled
 #if 0
                   | EShMsgDebugInfo
