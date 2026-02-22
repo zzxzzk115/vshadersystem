@@ -1,6 +1,7 @@
 #include <vshadersystem/binary.hpp>
 #include <vshadersystem/system.hpp>
 
+#include <cstring>
 #include <fstream>
 #include <iostream>
 

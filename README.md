@@ -1,10 +1,24 @@
 # vshadersystem
 
-vshadersystem is a standalone shader compilation, variant generation,
-and material reflection pipeline.
+<h4 align="center">
+  vshadersystem is a standalone shader compilation, variant generation, and material reflection pipeline.
+</h4>
 
-It compiles GLSL shaders into SPIR-V, generates shader variants using
-keywords, and packages them into runtime‑ready shader libraries.
+<p align="center">
+    <a href="https://github.com/zzxzzk115/vshadersystem/releases/latest" alt="Latest Release">
+        <img src="https://img.shields.io/github/release/zzxzzk115/vshadersystem?include_prereleases=&sort=semver&color=blue" /></a>
+    <a href="https://github.com/zzxzzk115/vshadersystem/actions" alt="Build-Windows">
+        <img src="https://img.shields.io/github/actions/workflow/status/zzxzzk115/vshadersystem/build_windows.yaml?branch=master&label=Build-Windows&logo=github" /></a>
+    <a href="https://github.com/zzxzzk115/vshadersystem/actions" alt="Build-Linux">
+        <img src="https://img.shields.io/github/actions/workflow/status/zzxzzk115/vshadersystem/build_linux.yaml?branch=master&label=Build-Linux&logo=github" /></a>
+    <a href="https://github.com/zzxzzk115/vshadersystem/actions" alt="Build-macOS">
+        <img src="https://img.shields.io/github/actions/workflow/status/zzxzzk115/vshadersystem/build_macos.yaml?branch=master&label=Build-macOS&logo=github" /></a>
+    <a href="https://github.com/zzxzzk115/vshadersystem/issues" alt="GitHub Issues">
+        <img src="https://img.shields.io/github/issues/zzxzzk115/vshadersystem"></a>
+    <a href="https://www.codefactor.io/repository/github/zzxzzk115/vshadersystem"><img src="https://www.codefactor.io/repository/github/zzxzzk115/vshadersystem/badge" alt="CodeFactor" /></a>
+    <a href="https://github.com/zzxzzk115/vshadersystem/blob/master/LICENSE" alt="GitHub">
+        <img src="https://img.shields.io/github/license/zzxzzk115/vshadersystem"></a>
+</p>
 
 ## Overview
 
@@ -358,6 +372,8 @@ Build:
 Run the example:
 
     xmake run example_build_shader
+    xmake run example_keywords
+    xmake run example_runtime_load_library
 
 ## License
 
