@@ -290,7 +290,52 @@ Load shader binary:
 ``` cpp
 #include <vshadersystem/binary.hpp>
 
-auto shader = read_vshbin_file("shader.vshbin").value();
+auto lr = read_vshbin_file("shader.vshbin");
+if (!lr.isOk())
+{
+    // error..
+}
+
+const auto& shader = lr.value();
+```
+
+Load shader binary from a shader library:
+
+```cpp
+auto lr = read_vshlib_file(libPath);
+if (!lr.isOk())
+{
+    // error..
+}
+
+const auto& lib = lr.value();
+
+// Example: shader id derived from path at cook time:
+// shaders/pbr.frag.vshader -> "pbr.frag"
+const std::string shaderId = "pbr.frag";
+
+VariantKey key;
+key.setShaderId(shaderId);
+key.setStage(ShaderStage::eFrag);
+
+// Example permutation keyword set
+key.set("USE_SHADOW", 1);
+
+const uint64_t variantHash = key.build();
+
+auto blobR = extract_vshlib_blob(lib, variantHash, ShaderStage::eFrag);
+if (!blobR.isOk())
+{
+    // error..
+}
+
+auto br = read_vshbin(blobR.value());
+if (!br.isOk())
+{
+    // error..
+}
+
+const auto& bin = br.value();
 ```
 
 ## Build Instructions

@@ -568,6 +568,15 @@ namespace vshadersystem
             write_bytes(out, payload.data(), payload.size());
         };
 
+        // SIDH (optional, v2+): stable logical shader id hash for runtime lookup
+        if (bin.shaderIdHash != 0)
+        {
+            std::vector<uint8_t> sidh;
+            sidh.reserve(8);
+            write_u64(sidh, bin.shaderIdHash);
+            write_chunk("SIDH", sidh);
+        }
+
         // VKEY (optional)
         if (bin.variantHash != 0)
         {
@@ -661,7 +670,20 @@ namespace vshadersystem
 
             p += size;
 
-            if (tag == tag_u32("VKEY"))
+            if (tag == tag_u32("SIDH"))
+            {
+                if (size != 8)
+                    return Result<ShaderBinary>::err({ErrorCode::eDeserializeError, "SIDH chunk size invalid."});
+
+                uint64_t       sh = 0;
+                const uint8_t* p2 = payload;
+                const uint8_t* e2 = payload + size;
+                if (!read_u64(p2, e2, sh) || p2 != e2)
+                    return Result<ShaderBinary>::err({ErrorCode::eDeserializeError, "Failed to read SIDH chunk."});
+
+                out.shaderIdHash = sh;
+            }
+            else if (tag == tag_u32("VKEY"))
             {
                 if (size != 8)
                     return Result<ShaderBinary>::err({ErrorCode::eDeserializeError, "VKEY chunk size invalid."});

@@ -29,6 +29,7 @@ namespace vshadersystem
     // 'SPRV' : SPIR-V bytecode
     // 'REFL' : reflection info
     // 'MDES' : material description
+    // 'SIDH' : shader id hash (u64). Present in v2+.
     // 'VKEY' : variant key hash (u64). Present in v2+ when computed.
     //
     // Unknown chunks are skipped for forward compatibility.
