@@ -6,10 +6,18 @@
 #include <cstring>
 #include <fstream>
 
+#if defined(_WIN32)
+#include <process.h>
+#define VSS_GETPID _getpid
+#else
+#include <unistd.h>
+#define VSS_GETPID getpid
+#endif
+
 namespace vshadersystem
 {
     static constexpr uint8_t  kMagic[8] = {'V', 'S', 'H', 'B', 'I', 'N', 0, 0};
-    static constexpr uint32_t kVersion  = 1;
+    static constexpr uint32_t kVersion  = 2;
 
     static inline void write_u32(std::vector<uint8_t>& out, uint32_t v)
     {
@@ -560,6 +568,15 @@ namespace vshadersystem
             write_bytes(out, payload.data(), payload.size());
         };
 
+        // VKEY (optional)
+        if (bin.variantHash != 0)
+        {
+            std::vector<uint8_t> vkey;
+            vkey.reserve(8);
+            write_u64(vkey, bin.variantHash);
+            write_chunk("VKEY", vkey);
+        }
+
         // SPRV
         std::vector<uint8_t> sprvPayload;
         sprvPayload.resize(bin.spirv.size() * sizeof(uint32_t));
@@ -596,7 +613,7 @@ namespace vshadersystem
         if (!read_u32(p, e, version))
             return Result<ShaderBinary>::err({ErrorCode::eDeserializeError, "Failed to read version."});
 
-        if (version != kVersion)
+        if (version < 1 || version > kVersion)
             return Result<ShaderBinary>::err({ErrorCode::eDeserializeError, "Unsupported .vshbin version."});
 
         if (!read_u32(p, e, flags))
@@ -621,6 +638,7 @@ namespace vshadersystem
 
         out.stage = static_cast<ShaderStage>(flags & 0xFF);
 
+        bool hasVKEY = false;
         bool hasSPRV = false;
         bool hasREFL = false;
         bool hasMDES = false;
@@ -643,7 +661,21 @@ namespace vshadersystem
 
             p += size;
 
-            if (tag == tag_u32("SPRV"))
+            if (tag == tag_u32("VKEY"))
+            {
+                if (size != 8)
+                    return Result<ShaderBinary>::err({ErrorCode::eDeserializeError, "VKEY chunk size invalid."});
+
+                uint64_t       vh = 0;
+                const uint8_t* p2 = payload;
+                const uint8_t* e2 = payload + size;
+                if (!read_u64(p2, e2, vh) || p2 != e2)
+                    return Result<ShaderBinary>::err({ErrorCode::eDeserializeError, "Failed to read VKEY chunk."});
+
+                out.variantHash = vh;
+                hasVKEY         = true;
+            }
+            else if (tag == tag_u32("SPRV"))
             {
                 if (size % 4 != 0)
                     return Result<ShaderBinary>::err({ErrorCode::eDeserializeError, "SPRV chunk size not aligned."});
@@ -691,6 +723,8 @@ namespace vshadersystem
         if (!hasMDES)
             return Result<ShaderBinary>::err({ErrorCode::eDeserializeError, "Missing MDES chunk."});
 
+        (void)hasVKEY; // optional
+
         if (out.spirvHash != 0)
         {
             uint64_t computed = xxhash64_words(out.spirv);
@@ -711,16 +745,37 @@ namespace vshadersystem
         // Make sure the parent directory exists
         auto parentPath = std::filesystem::path(path).parent_path();
         if (!parentPath.empty())
-            std::filesystem::create_directories(std::filesystem::path(path).parent_path());
+            std::filesystem::create_directories(parentPath);
 
-        std::ofstream f(path, std::ios::binary);
-        if (!f)
-            return Result<void>::err({ErrorCode::eIO, "Failed to open file for writing: " + path});
+        // Production-grade atomic write:
+        // write to a temp file then rename.
+        const std::string tmpPath = path + ".tmp." + std::to_string(static_cast<uint64_t>(VSS_GETPID()));
 
-        f.write(reinterpret_cast<const char*>(bytes.value().data()),
-                static_cast<std::streamsize>(bytes.value().size()));
-        if (!f)
-            return Result<void>::err({ErrorCode::eIO, "Failed to write file: " + path});
+        {
+            std::ofstream f(tmpPath, std::ios::binary);
+            if (!f)
+                return Result<void>::err({ErrorCode::eIO, "Failed to open file for writing: " + tmpPath});
+
+            f.write(reinterpret_cast<const char*>(bytes.value().data()),
+                    static_cast<std::streamsize>(bytes.value().size()));
+            if (!f)
+                return Result<void>::err({ErrorCode::eIO, "Failed to write file: " + tmpPath});
+        }
+
+        std::error_code ec;
+        std::filesystem::rename(tmpPath, path, ec);
+        if (ec)
+        {
+            // Try replace existing (Windows compatibility)
+            std::filesystem::remove(path, ec);
+            ec.clear();
+            std::filesystem::rename(tmpPath, path, ec);
+            if (ec)
+            {
+                std::filesystem::remove(tmpPath, ec);
+                return Result<void>::err({ErrorCode::eIO, "Failed to rename temp file to: " + path});
+            }
+        }
 
         return Result<void>::ok();
     }

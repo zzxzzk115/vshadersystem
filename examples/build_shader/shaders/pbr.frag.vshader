@@ -5,6 +5,10 @@
 
 #include "common.glsl"
 
+// Keywords
+#pragma keyword permute USE_SHADOW
+#pragma keyword special LIGHT_COUNT
+
 // Material marker (Required!)
 #pragma vultra material
 

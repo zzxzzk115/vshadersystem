@@ -16,7 +16,7 @@ namespace vshadersystem
 
     struct CompileOptions
     {
-        ShaderStage stage = ShaderStage::eFrag;
+        ShaderStage stage = ShaderStage::eUnknown;
 
         // Target SPIR-V version. glslang uses Vulkan/OpenGL envs; we expose a minimal target here.
         int spirvVersion = 0; // 0 = default for environment

@@ -2,6 +2,7 @@
 
 #include "vshadersystem/result.hpp"
 #include "vshadersystem/types.hpp"
+#include "vshadersystem/keywords.hpp"
 
 #include <string>
 #include <string_view>
@@ -30,6 +31,9 @@ namespace vshadersystem
 
         std::unordered_map<std::string, ParamMeta>   params;
         std::unordered_map<std::string, TextureMeta> textures;
+
+        // Keyword declarations parsed from #pragma keyword ... lines
+        std::vector<KeywordDecl> keywords;
 
         RenderState renderState {};
         bool        renderStateExplicit = false;
