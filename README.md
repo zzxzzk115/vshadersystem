@@ -200,8 +200,7 @@ Shader library containing:
 ```
 Usage:
   vshaderc compile -i <input.vshader> -o <output.vshbin> -S <stage> [options]
-  vshaderc cook -m <manifest.vcook> -o <output.vshlib> [options]
-  vshaderc cook-merge -o <merged.vcook> <a.vcook> <b.vcook> ... [options]
+  vshaderc build --shader_root <dir> [--shader <path> ...] [-I <dir> ...] [--keywords-file <path.vkw>] -o <output.vshlib> [options]
   vshaderc packlib -o <output.vshlib> [--keywords-file <path.vkw>] <in1.vshbin> <in2.vshbin> ...
 
 Stages:
@@ -215,25 +214,19 @@ Options (compile):
   --cache <dir>          Cache directory (default: .vshader_cache)
   --verbose              Verbose logging
 
-Options (cook):
-  -m, --manifest <vcook> Input manifest
-  -o <vshlib>             Output library
-  -I <dir>               Extra include directory (repeatable, appended)
-  --keywords-file <vkw>  Apply engine_keywords.vkw for global permute defaults + embed into vshlib
+Options (build):
+  --shader_root <dir>    Root directory used for scanning shaders and computing stable shader ids
+  --shader <path>        Build only a specific shader (repeatable). Path is relative to --shader_root unless absolute.
+  -I <dir>               Add include directory (repeatable)
+  --keywords-file <vkw>  Load engine keywords (.vkw) and embed it into the output vshlib
   --no-cache             Disable cache
   --cache <dir>          Cache directory (default: .vshader_cache)
-  -j, --jobs <N>         (Ignored) Cook forced single-thread (determinism, avoid deadlocks)
   --skip-invalid          Skip variants failing only_if constraints
-  --verbose               Verbose pruning + entrypoint probe
-
-Options (cook-merge):
-  -o <merged.vcook>       Output manifest
-  --keywords-file <vkw>   Force keywords_file=... in output (otherwise only kept if all inputs match)
-  --verbose               Print merge summary
+  --verbose               Verbose logging
 
 Examples:
   vshaderc compile -i shaders/pbr.frag.vshader -o out/pbr.frag.vshbin -S frag -I shaders/include -D USE_FOO=1
-  vshaderc cook -m examples/keywords/shader_cook.vcook -o out/shaders.vshlib --keywords-file examples/keywords/engine_keywords.vkw --verbose
+  vshaderc build --shader_root examples/keywords/shaders --keywords-file examples/keywords/engine_keywords.vkw -o out/shaders.vshlib --verbose
   vshaderc packlib -o out/shaders.vshlib --keywords-file engine_keywords.vkw out/*.vshbin
 ```
 
@@ -262,41 +255,10 @@ auto result = compile_shader(input, opt);
 write_vshbin_file("shader.vshbin", result.value());
 ```
 
-Cook shader library:
+Build shader library (offline):
 
-``` cpp
-#include <vshadersystem/cook.hpp>
-
-using namespace vshadersystem;
-
-CookOptions opt;
-
-opt.manifestPath = "shader_cook.vcook";
-opt.outputPath   = "shaders.vshlib";
-
-auto result = cook_shader_library(opt);
-
-if (!result.isOk())
-{
-    printf("Cook failed: %s\n", result.error().message.c_str());
-}
-```
-
-Merge cook manifests:
-
-``` cpp
-#include <vshadersystem/cook.hpp>
-
-using namespace vshadersystem;
-
-CookMergeOptions opt;
-
-opt.outputPath = "merged.vcook";
-
-opt.inputs.push_back("a.vcook");
-opt.inputs.push_back("b.vcook");
-
-auto result = cook_merge_manifests(opt);
+```bash
+vshaderc build --shader_root <shader_root> --keywords-file <engine_keywords.vkw> -o <output.vshlib>
 ```
 
 Load shader binary:
@@ -324,7 +286,7 @@ if (!lr.isOk())
 
 const auto& lib = lr.value();
 
-// Example: shader id derived from path at cook time:
+// Example: shader id derived from path at build time (relative to --shader_root):
 // shaders/pbr.frag.vshader -> "pbr.frag"
 const std::string shaderId = "pbr.frag";
 

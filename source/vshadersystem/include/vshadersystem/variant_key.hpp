@@ -19,7 +19,7 @@ namespace vshadersystem
     // ------------------------------------------------------------
     // VariantKey
     //
-    // Runtime helper to compute variantHash exactly like the cook step.
+    // Runtime helper to compute variantHash exactly like the build step.
     //
     // variantHash = hash(shaderIdHash, stage, permutation keyword values)
     // ------------------------------------------------------------

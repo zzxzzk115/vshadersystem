@@ -33,17 +33,13 @@ int main()
                   << ", offset=" << e.offset << ", size=" << e.size << "\n";
     }
 
-    // Example: shader id derived from path at cook time:
-    // shaders/pbr.frag.vshader -> "pbr.frag"
-    const std::string shaderId = "pbr.frag";
+    // Example: shader id derived from path at build time:
+    // shaders/pipelines/universal/base.frag.vshader -> "base.frag"
+    const std::string shaderId = "base.frag";
 
     VariantKey key;
     key.setShaderId(shaderId);
     key.setStage(ShaderStage::eFrag);
-
-    // Example permutation keyword set
-    key.set("USE_SHADOW", 1);
-    key.set("PASS", 0);
 
     const uint64_t variantHash = key.build();
 
