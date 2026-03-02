@@ -1,7 +1,7 @@
 #pragma once
 
-#include <string>
 #include <cstdint>
+#include <string>
 #include <utility>
 
 namespace vshadersystem
@@ -15,7 +15,8 @@ namespace vshadersystem
         eCompileError,
         eReflectError,
         eSerializeError,
-        eDeserializeError
+        eDeserializeError,
+        eRuntimeError,
     };
 
     struct Error

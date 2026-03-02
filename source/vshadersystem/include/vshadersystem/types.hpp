@@ -42,6 +42,27 @@ namespace vshadersystem
     };
 
     // ------------------------------------------------------------
+    // Shader language
+    // ------------------------------------------------------------
+    enum class ShaderLanguage : uint8_t
+    {
+        eAuto = 0,
+        eGLSL,
+        eSlang
+    };
+
+    // ------------------------------------------------------------
+    // Material access mode (tool-layer injected API)
+    // ------------------------------------------------------------
+    enum class MaterialAccessMode : uint8_t
+    {
+        eBDA = 0,     // Buffer Device Address / PhysicalStorageBuffer
+        eUBO,         // Uniform Buffer (std140)
+        eSSBO,        // Storage Buffer (std430) + index
+        ePushConstant // Push constant
+    };
+
+    // ------------------------------------------------------------
     // Descriptor kinds
     // ------------------------------------------------------------
     enum class DescriptorKind : uint8_t

@@ -525,3 +525,156 @@ namespace vshadersystem
         return Result<CompileOutput>::ok(std::move(out));
     }
 } // namespace vshadersystem
+
+// ------------------------------------------------------------
+// Slang -> SPIR-V (C++ API)
+// ------------------------------------------------------------
+// Use the C++ COM-lite API (IGlobalSession/ISession/ICompileRequest)
+// as documented in Slang user guide.
+#include <slang-com-ptr.h>
+#include <slang.h>
+
+namespace vshadersystem
+{
+    static SlangStage to_slang_stage(ShaderStage s)
+    {
+        switch (s)
+        {
+            case ShaderStage::eVert:
+                return SLANG_STAGE_VERTEX;
+            case ShaderStage::eFrag:
+                return SLANG_STAGE_FRAGMENT;
+            case ShaderStage::eComp:
+                return SLANG_STAGE_COMPUTE;
+            case ShaderStage::eTask:
+                return SLANG_STAGE_AMPLIFICATION;
+            case ShaderStage::eMesh:
+                return SLANG_STAGE_MESH;
+            case ShaderStage::eRgen:
+                return SLANG_STAGE_RAY_GENERATION;
+            case ShaderStage::eRmiss:
+                return SLANG_STAGE_MISS;
+            case ShaderStage::eRchit:
+                return SLANG_STAGE_CLOSEST_HIT;
+            case ShaderStage::eRahit:
+                return SLANG_STAGE_ANY_HIT;
+            case ShaderStage::eRint:
+                return SLANG_STAGE_INTERSECTION;
+            default:
+                return SLANG_STAGE_NONE;
+        }
+    }
+
+    Result<CompileOutput> compile_slang_to_spirv(const SourceInput& input, const CompileOptions& opt)
+    {
+        CompileOutput out;
+
+        if (opt.stage == ShaderStage::eUnknown)
+            return Result<CompileOutput>::err({ErrorCode::eInvalidArgument, "Slang compile requires stage"});
+
+        using Slang::ComPtr;
+        using namespace slang;
+
+        // Create global session (C++ API).
+        SlangGlobalSessionDesc gdesc = {};
+        // GLSL compatibility mode is required to compile GLSL sources via Slang.
+        // Keep it false, as we use slang only for Slang sources.
+        gdesc.enableGLSL = false;
+
+        ComPtr<IGlobalSession> globalSession;
+        if (SLANG_FAILED(createGlobalSession(&gdesc, globalSession.writeRef())))
+            return Result<CompileOutput>::err({ErrorCode::eCompileError, "Failed to create Slang global session"});
+
+        // Target(s)
+        TargetDesc targetDesc = {};
+        targetDesc.format     = SLANG_SPIRV;
+        targetDesc.profile    = globalSession->findProfile("spirv_1_5");
+        targetDesc.flags      = SLANG_TARGET_FLAG_GENERATE_SPIRV_DIRECTLY;
+
+        // Session desc
+        SessionDesc sessionDesc   = {};
+        sessionDesc.structureSize = sizeof(SessionDesc);
+        sessionDesc.targets       = &targetDesc;
+        sessionDesc.targetCount   = 1;
+
+        // Search paths
+        std::vector<const char*> sp;
+        sp.reserve(opt.includeDirs.size());
+        for (const auto& d : opt.includeDirs)
+            sp.push_back(d.c_str());
+        sessionDesc.searchPaths     = sp.data();
+        sessionDesc.searchPathCount = static_cast<SlangInt>(sp.size());
+
+        // Macros
+        std::vector<PreprocessorMacroDesc> macros;
+        macros.reserve(opt.defines.size());
+        for (const auto& def : opt.defines)
+        {
+            PreprocessorMacroDesc m = {};
+            m.name                  = def.name.c_str();
+            m.value                 = def.value.empty() ? "1" : def.value.c_str();
+            macros.push_back(m);
+        }
+        sessionDesc.preprocessorMacros     = macros.data();
+        sessionDesc.preprocessorMacroCount = static_cast<SlangInt>(macros.size());
+
+        ComPtr<ISession> session;
+        if (SLANG_FAILED(globalSession->createSession(sessionDesc, session.writeRef())))
+            return Result<CompileOutput>::err({ErrorCode::eRuntimeError, "Failed to create Slang session"});
+
+        ComPtr<ICompileRequest> req;
+        if (SLANG_FAILED(session->createCompileRequest(req.writeRef())))
+            return Result<CompileOutput>::err({ErrorCode::eRuntimeError, "Failed to create Slang compile request"});
+
+        // Add translation unit
+        int tuIndex = req->addTranslationUnit(SLANG_SOURCE_LANGUAGE_SLANG, nullptr);
+        req->addTranslationUnitSourceString(tuIndex, input.virtualPath.c_str(), input.sourceText.c_str());
+
+        // Entry point
+        SlangStage stage = to_slang_stage(opt.stage);
+        if (stage == SLANG_STAGE_NONE)
+        {
+            return Result<CompileOutput>::err({ErrorCode::eInvalidArgument, "Unsupported stage for Slang"});
+        }
+
+        // Entry point function name is provided by CompileOptions::entryPoint.
+        const char* entry = opt.entryPoint.c_str();
+        // Compile request entry points are specified by function name
+        int epIndex = req->addEntryPoint(tuIndex, entry, stage);
+
+        // Compile
+        if (SLANG_FAILED(req->compile()))
+        {
+            const char* diag = req->getDiagnosticOutput();
+            out.infoLog      = diag ? diag : "";
+            return Result<CompileOutput>::err({ErrorCode::eCompileError, out.infoLog});
+        }
+
+        // Get code for entry point
+        Slang::ComPtr<slang::IBlob> blob;
+        if (SLANG_FAILED(req->getEntryPointCodeBlob(epIndex, 0, blob.writeRef())) || !blob)
+        {
+            return Result<CompileOutput>::err({ErrorCode::eRuntimeError, "Failed to retrieve SPIR-V from Slang"});
+        }
+
+        const size_t sizeBytes = blob->getBufferSize();
+        const void*  data      = blob->getBufferPointer();
+
+        if (!data || sizeBytes % 4 != 0)
+        {
+            return Result<CompileOutput>::err({ErrorCode::eRuntimeError, "Invalid SPIR-V blob size from Slang"});
+        }
+
+        out.spirv.resize(sizeBytes / 4);
+        std::memcpy(out.spirv.data(), data, sizeBytes);
+
+        // NOTE: Slang-native reflection can be layered on top later using
+        // `ICompileRequest::getReflection()` and its C++ wrapper APIs.
+        // For now, vshadersystem uses SPIR-V reflection (SPIRV-Cross) for
+        // both GLSL and Slang backends to keep output ABI consistent.
+
+        out.infoLog = req->getDiagnosticOutput() ? req->getDiagnosticOutput() : "";
+
+        return Result<CompileOutput>::ok(std::move(out));
+    }
+} // namespace vshadersystem

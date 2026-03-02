@@ -461,9 +461,11 @@ static int cmd_compile(int argc, char** argv)
     std::vector<std::string> includeDirs;
     std::vector<Define>      defines;
     std::string              keywordsFile;
-    bool                     enableCache = true;
-    std::string              cacheDir    = ".vshader_cache";
-    bool                     verbose     = false;
+    bool                     enableCache     = true;
+    std::string              cacheDir        = ".vshader_cache";
+    bool                     verbose         = false;
+    std::string              materialModeStr = "bda";
+    std::string              languageStr     = "auto";
 
     for (int i = 2; i < argc; ++i)
     {
@@ -619,6 +621,29 @@ static int cmd_compile(int argc, char** argv)
     req.options.includeDirs = std::move(includeDirs);
     req.options.defines     = std::move(defines);
 
+    // Language
+    if (languageStr == "glsl")
+        req.options.language = ShaderLanguage::eGLSL;
+    else if (languageStr == "slang")
+        req.options.language = ShaderLanguage::eSlang;
+    else
+        req.options.language = ShaderLanguage::eAuto;
+
+    // Material access mode
+    if (materialModeStr == "bda")
+        req.options.materialAccessMode = MaterialAccessMode::eBDA;
+    else if (materialModeStr == "ubo")
+        req.options.materialAccessMode = MaterialAccessMode::eUBO;
+    else if (materialModeStr == "ssbo")
+        req.options.materialAccessMode = MaterialAccessMode::eSSBO;
+    else if (materialModeStr == "push")
+        req.options.materialAccessMode = MaterialAccessMode::ePushConstant;
+    else
+    {
+        log_error("Unknown --material-mode: " + materialModeStr);
+        return 1;
+    }
+
     req.hasEngineKeywords = hasEngineKw;
     if (hasEngineKw)
         req.engineKeywords = std::move(engineKw);
@@ -761,10 +786,12 @@ static int cmd_build(int argc, char** argv)
     std::vector<std::string> includeDirs;
     std::string              keywordsPath;
     std::string              outLibPath;
-    bool                     enableCache = true;
-    std::string              cacheDir    = ".vshader_cache";
-    bool                     skipInvalid = false;
-    bool                     verbose     = false;
+    bool                     enableCache     = true;
+    std::string              cacheDir        = ".vshader_cache";
+    bool                     skipInvalid     = false;
+    bool                     verbose         = false;
+    std::string              materialModeStr = "bda";
+    std::string              languageStr     = "auto";
 
     for (int i = 2; i < argc; ++i)
     {
@@ -781,6 +808,39 @@ static int cmd_build(int argc, char** argv)
         else if (a == "-I" && i + 1 < argc)
         {
             includeDirs.push_back(normalize_path_slashes(argv[++i]));
+        }
+
+        else if ((a == "--material-mode" || a.rfind("--material-mode=", 0) == 0))
+        {
+            if (a == "--material-mode")
+            {
+                if (i + 1 >= argc)
+                {
+                    log_error("--material-mode requires bda|ubo|ssbo|push");
+                    return 1;
+                }
+                materialModeStr = argv[++i];
+            }
+            else
+            {
+                materialModeStr = a.substr(std::strlen("--material-mode="));
+            }
+        }
+        else if ((a == "--language" || a.rfind("--language=", 0) == 0))
+        {
+            if (a == "--language")
+            {
+                if (i + 1 >= argc)
+                {
+                    log_error("--language requires auto|glsl|slang");
+                    return 1;
+                }
+                languageStr = argv[++i];
+            }
+            else
+            {
+                languageStr = a.substr(std::strlen("--language="));
+            }
         }
         else if ((a == "--keywords-file" || a.rfind("--keywords-file=", 0) == 0))
         {
@@ -1078,6 +1138,29 @@ static int cmd_build(int argc, char** argv)
             req.options.includeDirs = includeDirs;
             req.options.defines     = defines;
 
+            // Language
+            if (languageStr == "glsl")
+                req.options.language = ShaderLanguage::eGLSL;
+            else if (languageStr == "slang")
+                req.options.language = ShaderLanguage::eSlang;
+            else
+                req.options.language = ShaderLanguage::eAuto;
+
+            // Material access mode
+            if (materialModeStr == "bda")
+                req.options.materialAccessMode = MaterialAccessMode::eBDA;
+            else if (materialModeStr == "ubo")
+                req.options.materialAccessMode = MaterialAccessMode::eUBO;
+            else if (materialModeStr == "ssbo")
+                req.options.materialAccessMode = MaterialAccessMode::eSSBO;
+            else if (materialModeStr == "push")
+                req.options.materialAccessMode = MaterialAccessMode::ePushConstant;
+            else
+            {
+                log_error("Unknown --material-mode: " + materialModeStr);
+                return 5;
+            }
+
             req.hasEngineKeywords = hasEngineKw;
             if (hasEngineKw)
                 req.engineKeywords = engineKw;
@@ -1138,7 +1221,7 @@ static int cmd_build(int argc, char** argv)
     if (!firstError.empty())
     {
         log_error(firstError);
-        return 5;
+        return 6;
     }
 
     // Deterministic ordering for stable builds
@@ -1157,7 +1240,7 @@ static int cmd_build(int argc, char** argv)
         if (ec)
         {
             log_error("build: failed to create output directory: " + outDir.generic_string() + ": " + ec.message());
-            return 6;
+            return 7;
         }
     }
 
@@ -1168,7 +1251,7 @@ static int cmd_build(int argc, char** argv)
     if (!w.isOk())
     {
         log_error("build: write vshlib failed: " + w.error().message);
-        return 7;
+        return 8;
     }
 
     log_info("build: OK -> " + outLibPath);

@@ -1,8 +1,8 @@
 #pragma once
 
+#include "vshadersystem/keywords.hpp"
 #include "vshadersystem/result.hpp"
 #include "vshadersystem/types.hpp"
-#include "vshadersystem/keywords.hpp"
 
 #include <string>
 #include <string_view>
@@ -12,7 +12,18 @@ namespace vshadersystem
 {
     struct ParsedMetadata
     {
-        bool hasMaterialDecl = false;
+        bool           hasMaterialDecl    = false;
+        std::string    materialStructName = "Material";
+        ShaderLanguage language           = ShaderLanguage::eAuto;
+        uint32_t       renderQueue        = 2000;
+
+        // Entry points for single-file multi-stage shaders.
+        // Defaults to "main" for all stages.
+        std::string entryVert = "main";
+        std::string entryFrag = "main";
+        std::string entryComp = "main";
+        std::string entryTask = "main";
+        std::string entryMesh = "main";
 
         // name -> semantic/default/range
         struct ParamMeta

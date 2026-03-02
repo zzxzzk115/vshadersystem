@@ -5,6 +5,7 @@
 #include <cctype>
 #include <cstring>
 #include <sstream>
+#include <string>
 
 namespace vshadersystem
 {
@@ -36,6 +37,18 @@ namespace vshadersystem
             return true;
         }
         return false;
+    }
+
+    static inline bool is_number(std::string_view s)
+    {
+        if (s.empty())
+            return false;
+        for (char c : s)
+        {
+            if (!std::isdigit(static_cast<unsigned char>(c)))
+                return false;
+        }
+        return true;
     }
 
     static inline bool parse_semantic(std::string_view s, Semantic& out)
@@ -541,6 +554,89 @@ namespace vshadersystem
             if (keyword == "material")
             {
                 out.hasMaterialDecl = true;
+                if (toks.size() >= 4)
+                    out.materialStructName = toks[3];
+                continue;
+            }
+            else if (keyword == "language")
+            {
+                if (toks.size() < 4)
+                    return Result<ParsedMetadata>::err({ErrorCode::eParseError, "language requires glsl|slang|auto"});
+                auto v = toks[3];
+                if (v == "glsl")
+                    out.language = ShaderLanguage::eGLSL;
+                else if (v == "slang")
+                    out.language = ShaderLanguage::eSlang;
+                else
+                    out.language = ShaderLanguage::eAuto;
+                continue;
+            }
+
+            else if (keyword == "entry")
+            {
+                if (toks.size() < 5)
+                    return Result<ParsedMetadata>::err({ErrorCode::eParseError, "entry requires: <stage> <name>"});
+
+                const auto st = toks[3];
+                const auto nm = std::string(toks[4]);
+
+                auto set_entry = [&](ShaderStage s, const std::string& name) {
+                    switch (s)
+                    {
+                        case ShaderStage::eVert:
+                            out.entryVert = name;
+                            break;
+                        case ShaderStage::eFrag:
+                            out.entryFrag = name;
+                            break;
+                        case ShaderStage::eComp:
+                            out.entryComp = name;
+                            break;
+                        case ShaderStage::eTask:
+                            out.entryTask = name;
+                            break;
+                        case ShaderStage::eMesh:
+                            out.entryMesh = name;
+                            break;
+                        default:
+                            break;
+                    }
+                };
+
+                ShaderStage stage = ShaderStage::eUnknown;
+                if (st == "vert")
+                    stage = ShaderStage::eVert;
+                else if (st == "frag")
+                    stage = ShaderStage::eFrag;
+                else if (st == "comp")
+                    stage = ShaderStage::eComp;
+                else if (st == "task")
+                    stage = ShaderStage::eTask;
+                else if (st == "mesh")
+                    stage = ShaderStage::eMesh;
+                else
+                    return Result<ParsedMetadata>::err(
+                        {ErrorCode::eParseError, "Unknown entry stage: " + std::string(st)});
+
+                set_entry(stage, nm);
+                continue;
+            }
+
+            else if (keyword == "queue")
+            {
+                if (toks.size() < 4)
+                    return Result<ParsedMetadata>::err({ErrorCode::eParseError, "queue requires a value"});
+                auto v = toks[3];
+                if (is_number(v))
+                    out.renderQueue = static_cast<uint32_t>(std::strtoul(std::string(v).c_str(), nullptr, 10));
+                else if (v == "Opaque")
+                    out.renderQueue = 2000;
+                else if (v == "Transparent")
+                    out.renderQueue = 3000;
+                else if (v == "Overlay")
+                    out.renderQueue = 4000;
+                else
+                    out.renderQueue = 2000;
                 continue;
             }
             else if (keyword == "param")
