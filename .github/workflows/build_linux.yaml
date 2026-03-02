@@ -29,12 +29,7 @@ jobs:
       - name: Build
         run: xmake repo -u && xmake -vD -y
 
-      - name: Upload xmake cache (debug)
+      - name: Show install error log
         if: failure()
-        uses: actions/upload-artifact@v4
-        with:
-          name: xmake-cache-${{ runner.os }}
-          path: |
-            .xmake
-            .xmake-cache
-          if-no-files-found: ignore
+        run: |
+          find /home/runner/.xmake/cache -name install.txt -exec echo "==== {} ====" \; -exec cat {} \;
