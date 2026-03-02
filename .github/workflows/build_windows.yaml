@@ -33,6 +33,6 @@ jobs:
         with:
           name: xmake-cache-${{ runner.os }}
           path: |
-            ~/.xmake
-            ${{ env.USERPROFILE }}\.xmake
+            .xmake
+            .xmake-cache
           if-no-files-found: ignore
