@@ -911,10 +911,10 @@ namespace vshadersystem
     }
 
     // ============================================================
-    // build_shader (FULL)
+    // build a single shader stage (GLSL or Slang)
     // ============================================================
 
-    Result<BuildResult> build_shader(const BuildRequest& req)
+    Result<BuildResult> build_single_shader(const BuildRequest& req)
     {
         // Parse metadata first (also goes into cache key)
         auto metaR = parse_vultra_metadata(req.source.sourceText);
@@ -1124,6 +1124,65 @@ namespace vshadersystem
         }
 
         return Result<BuildResult>::ok(std::move(out));
+    }
+
+    static bool stage_exists(std::string_view src, const char* marker)
+    {
+        return src.find(marker) != std::string_view::npos;
+    }
+
+    // ============================================================
+    // build multiple stages from single source (GLSL multi-stage shader)
+    //  - look for stage markers like `[vert]`, `[frag]` in source text
+    //  - if found, build that stage with filtered source; else skip stage
+    //  - if no stage markers found at all, return error
+    // ============================================================
+    Result<std::unordered_map<ShaderStage, BuildResult>> build_multiple_shaders(const BuildRequest& req)
+    {
+        std::unordered_map<ShaderStage, BuildResult> out;
+
+        struct StageInfo
+        {
+            ShaderStage stage;
+            const char* marker;
+        };
+
+        const StageInfo stages[] = {
+            {ShaderStage::eVert, "[vert]"},
+            {ShaderStage::eFrag, "[frag]"},
+            {ShaderStage::eComp, "[comp]"},
+            {ShaderStage::eTask, "[task]"},
+            {ShaderStage::eMesh, "[mesh]"},
+        };
+
+        bool foundAny = false;
+
+        for (const auto& s : stages)
+        {
+            if (!stage_exists(req.source.sourceText, s.marker))
+                continue;
+
+            foundAny = true;
+
+            BuildRequest singleReq = req;
+
+            singleReq.options.stage = s.stage;
+
+            auto r = build_single_shader(singleReq);
+
+            if (!r.isOk())
+                return Result<std::unordered_map<ShaderStage, BuildResult>>::err(r.error());
+
+            out[s.stage] = std::move(r.value());
+        }
+
+        if (!foundAny)
+        {
+            return Result<std::unordered_map<ShaderStage, BuildResult>>::err(
+                {ErrorCode::eParseError, "No stage markers found"});
+        }
+
+        return Result<std::unordered_map<ShaderStage, BuildResult>>::ok(std::move(out));
     }
 
     // ============================================================

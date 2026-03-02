@@ -16,7 +16,7 @@ namespace vshadersystem
 
         // Optional engine-wide keyword values (typically global scope), used for
         // resolving permutation keyword values and computing ShaderBinary::variantHash.
-        bool              hasEngineKeywords = false;
+        bool               hasEngineKeywords = false;
         EngineKeywordsFile engineKeywords;
 
         // Cache behavior
@@ -31,7 +31,9 @@ namespace vshadersystem
         bool         fromCache = false;
     };
 
-    Result<BuildResult> build_shader(const BuildRequest& req);
+    Result<BuildResult> build_single_shader(const BuildRequest& req);
+
+    Result<std::unordered_map<ShaderStage, BuildResult>> build_multiple_shaders(const BuildRequest& req);
 
     // Utility: build from SPIR-V input and still generate reflection + material description.
     Result<ShaderBinary> build_from_spirv(const std::vector<uint32_t>& spirv, ShaderStage stage);

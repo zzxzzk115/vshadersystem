@@ -312,6 +312,26 @@ static inline Result<uint32_t> parse_keyword_value_local(const KeywordDecl& d, c
     return Result<uint32_t>::err({ErrorCode::eParseError, "Unknown enum value '" + raw + "' for '" + d.name + "'"});
 }
 
+static ShaderStage stage_from_filename(const std::string& name)
+{
+    if (name.ends_with(".vert"))
+        return ShaderStage::eVert;
+
+    if (name.ends_with(".frag"))
+        return ShaderStage::eFrag;
+
+    if (name.ends_with(".comp"))
+        return ShaderStage::eComp;
+
+    if (name.ends_with(".mesh"))
+        return ShaderStage::eMesh;
+
+    if (name.ends_with(".task"))
+        return ShaderStage::eTask;
+
+    return ShaderStage::eUnknown;
+}
+
 // ============================================================
 // packlib
 // ============================================================
@@ -651,29 +671,113 @@ static int cmd_compile(int argc, char** argv)
     req.enableCache = enableCache;
     req.cacheDir    = cacheDir;
 
+    ShaderStage inferred = stage_from_filename(inPath);
+
     auto start = std::chrono::steady_clock::now();
-    auto r     = build_shader(req);
-    auto end   = std::chrono::steady_clock::now();
 
-    auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count();
-    log_info("compile: build_shader took " + std::to_string(ms) + " ms");
-
-    if (!r.isOk())
+    if (inferred != ShaderStage::eUnknown)
     {
-        log_error("compile: build failed: " + r.error().message);
-        return 6;
-    }
+        req.options.stage = inferred;
 
-    auto w = write_vshbin_file(outPath, r.value().binary);
-    if (!w.isOk())
+        auto r = build_single_shader(req);
+
+        auto end = std::chrono::steady_clock::now();
+
+        auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count();
+
+        log_info("compile: build_single_shader took " + std::to_string(ms) + " ms");
+
+        if (!r.isOk())
+        {
+            log_error("compile: build failed: " + r.error().message);
+            return 6;
+        }
+
+        auto w = write_vshbin_file(outPath, r.value().binary);
+
+        if (!w.isOk())
+        {
+            log_error("compile: write failed: " + w.error().message);
+            return 7;
+        }
+    }
+    else
     {
-        log_error("compile: write failed: " + w.error().message);
-        return 7;
-    }
+        auto r = build_multiple_shaders(req);
 
-    log_info("compile: OK wrote " + outPath + (r.value().fromCache ? " (cache)" : ""));
-    if (g_verbose && !r.value().log.empty())
-        log_verbose("compile log:\n" + r.value().log);
+        auto end = std::chrono::steady_clock::now();
+
+        auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count();
+
+        log_info("compile: build_multiple_shaders took " + std::to_string(ms) + " ms");
+
+        if (!r.isOk())
+        {
+            log_error("compile: build failed: " + r.error().message);
+            return 6;
+        }
+
+        std::filesystem::path base = outPath;
+
+        base.replace_extension("");
+
+        for (auto& [stage, result] : r.value())
+        {
+
+            std::string ext;
+
+            switch (stage)
+            {
+
+                case ShaderStage::eVert:
+                    ext = "vert";
+                    break;
+                case ShaderStage::eFrag:
+                    ext = "frag";
+                    break;
+                case ShaderStage::eComp:
+                    ext = "comp";
+                    break;
+                case ShaderStage::eMesh:
+                    ext = "mesh";
+                    break;
+                case ShaderStage::eTask:
+                    ext = "task";
+                    break;
+
+                case ShaderStage::eRgen:
+                    ext = "rgen";
+                    break;
+                case ShaderStage::eRmiss:
+                    ext = "rmiss";
+                    break;
+                case ShaderStage::eRchit:
+                    ext = "rchit";
+                    break;
+                case ShaderStage::eRahit:
+                    ext = "rahit";
+                    break;
+                case ShaderStage::eRint:
+                    ext = "rint";
+                    break;
+
+                default:
+                    ext = "unknown";
+            }
+
+            auto outFile = base.string() + "." + ext + ".vshbin";
+
+            auto w = write_vshbin_file(outFile, result.binary);
+
+            if (!w.isOk())
+            {
+                log_error("compile: write failed: " + w.error().message);
+                return 7;
+            }
+
+            log_info("compile: wrote " + outFile);
+        }
+    }
 
     return 0;
 }
@@ -684,15 +788,23 @@ static int cmd_compile(int argc, char** argv)
 
 static bool infer_stage_from_shader_path(const std::filesystem::path& p, ShaderStage& outStage)
 {
-    // Accept:
-    //   foo.vert.vshader, foo.frag.vshader, foo.comp.vshader, ...
-
     auto ext = p.extension().string();
+
     if (ext != ".vshader")
         return false;
 
-    auto stem = p.stem().string();                                // foo.vert
-    auto ext2 = std::filesystem::path(stem).extension().string(); // .vert
+    auto stem = p.stem().string();
+
+    auto ext2 = std::filesystem::path(stem).extension().string();
+
+    // *.vshader (single file, multiple stages)
+    // will be handled by build_multiple_shaders, which parses the file for stage markers.
+    if (ext2.empty())
+        return false;
+
+    if (ext2.size() <= 1)
+        return false;
+
     return parse_stage(ext2.substr(1), outStage);
 }
 
@@ -809,7 +921,6 @@ static int cmd_build(int argc, char** argv)
         {
             includeDirs.push_back(normalize_path_slashes(argv[++i]));
         }
-
         else if ((a == "--material-mode" || a.rfind("--material-mode=", 0) == 0))
         {
             if (a == "--material-mode")
@@ -987,15 +1098,12 @@ static int cmd_build(int argc, char** argv)
 
         const std::string virtualPath = normalize_path_slashes(rel.generic_string());
 
-        ShaderStage stage {};
-        if (!infer_stage_from_shader_path(shaderPathAbs, stage))
-        {
-            firstError = "build: failed to infer stage from file name: " + shaderPathAbs.generic_string();
-            break;
-        }
+        // NEW: stage inference is optional now.
+        ShaderStage inferredStage {};
+        const bool  hasInferredStage = infer_stage_from_shader_path(shaderPathAbs, inferredStage);
 
         log_info("build: [" + std::to_string(shaderIndex) + "/" + std::to_string(shaderFiles.size()) + "] " +
-                 virtualPath);
+                 virtualPath + (hasInferredStage ? "" : " (multi-stage)"));
 
         std::string src;
         if (!read_text_file(shaderPathAbs.generic_string(), src))
@@ -1134,9 +1242,13 @@ static int cmd_build(int argc, char** argv)
             BuildRequest req;
             req.source.virtualPath  = virtualPath;
             req.source.sourceText   = src;
-            req.options.stage       = stage;
             req.options.includeDirs = includeDirs;
             req.options.defines     = defines;
+
+            // Stage policy:
+            // - If file name infers a stage, compile that single stage.
+            // - Otherwise, let build_multiple_shaders decide stages from markers.
+            req.options.stage = hasInferredStage ? inferredStage : ShaderStage::eUnknown;
 
             // Language
             if (languageStr == "glsl")
@@ -1171,47 +1283,105 @@ static int cmd_build(int argc, char** argv)
             log_verbose("build: compiling variant " + std::to_string(variantIndex) + "/" +
                         std::to_string(variantDefines.size()));
 
-            auto br = build_shader(req);
-            if (!br.isOk())
+            // NEW: single vs multiple
+            if (hasInferredStage)
             {
-                firstError = "build: build failed for " + virtualPath + ": " + br.error().message;
-                break;
+                auto br = build_single_shader(req);
+                if (!br.isOk())
+                {
+                    firstError = "build: build failed for " + virtualPath + ": " + br.error().message;
+                    break;
+                }
+
+                const auto& bin = br.value().binary;
+
+                ShaderLibraryEntry e;
+                e.keyHash = (bin.variantHash != 0) ? bin.variantHash : bin.contentHash;
+                e.stage   = bin.stage;
+
+                const uint64_t sig =
+                    xxhash64(&e.keyHash, sizeof(e.keyHash), static_cast<uint64_t>(static_cast<uint8_t>(e.stage)));
+
+                log_info("build: building " + virtualPath + " variant " + std::to_string(variantIndex) + "/" +
+                         std::to_string(variantDefines.size()) + " shaderIdHash=" + std::to_string(bin.shaderIdHash) +
+                         " contentHash=" + std::to_string(bin.contentHash) + " variantHash=" +
+                         std::to_string(bin.variantHash) + " stage=" + std::to_string(static_cast<int>(bin.stage)));
+
+                auto bytes = write_vshbin(bin);
+                if (!bytes.isOk())
+                {
+                    firstError = "build: failed to serialize vshbin for " + virtualPath + ": " + bytes.error().message;
+                    break;
+                }
+                e.blob = std::move(bytes.value());
+
+                if (seen.find(sig) != seen.end())
+                {
+                    ++pruned;
+                    log_verbose("build: skipping duplicate entry for " + virtualPath + " variant " +
+                                std::to_string(variantIndex) + "/" + std::to_string(variantDefines.size()) +
+                                " keyHash=" + std::to_string(e.keyHash) +
+                                " stage=" + std::to_string(static_cast<int>(e.stage)));
+                    continue;
+                }
+
+                seen.insert(sig);
+                entries.push_back(std::move(e));
             }
-
-            const auto& bin = br.value().binary;
-
-            ShaderLibraryEntry e;
-            e.keyHash = (bin.variantHash != 0) ? bin.variantHash : bin.contentHash;
-            e.stage   = bin.stage;
-
-            const uint64_t sig =
-                xxhash64(&e.keyHash, sizeof(e.keyHash), static_cast<uint64_t>(static_cast<uint8_t>(e.stage)));
-
-            log_info("build: building " + virtualPath + " variant " + std::to_string(variantIndex) + "/" +
-                     std::to_string(variantDefines.size()) + " shaderIdHash=" + std::to_string(bin.shaderIdHash) +
-                     " contentHash=" + std::to_string(bin.contentHash) + " variantHash=" +
-                     std::to_string(bin.variantHash) + " stage=" + std::to_string(static_cast<int>(bin.stage)));
-
-            auto bytes = write_vshbin(bin);
-            if (!bytes.isOk())
+            else
             {
-                firstError = "build: failed to serialize vshbin for " + virtualPath + ": " + bytes.error().message;
-                break;
-            }
-            e.blob = std::move(bytes.value());
+                auto mr = build_multiple_shaders(req);
+                if (!mr.isOk())
+                {
+                    firstError = "build: build failed for " + virtualPath + ": " + mr.error().message;
+                    break;
+                }
 
-            if (seen.find(sig) != seen.end())
-            {
-                // Skip duplicates: this can happen when different shader files/variants produce the same content hash.
-                ++pruned;
-                log_verbose("build: skipping duplicate entry for " + virtualPath + " variant " +
-                            std::to_string(variantIndex) + "/" + std::to_string(variantDefines.size()) + " keyHash=" +
-                            std::to_string(e.keyHash) + " stage=" + std::to_string(static_cast<int>(e.stage)));
-                continue;
-            }
+                for (auto& [stage2, br2] : mr.value())
+                {
+                    const auto& bin = br2.binary;
 
-            seen.insert(sig);
-            entries.push_back(std::move(e));
+                    ShaderLibraryEntry e;
+                    e.keyHash = (bin.variantHash != 0) ? bin.variantHash : bin.contentHash;
+
+                    // Important: stage source of truth
+                    e.stage = bin.stage;
+
+                    const uint64_t sig =
+                        xxhash64(&e.keyHash, sizeof(e.keyHash), static_cast<uint64_t>(static_cast<uint8_t>(e.stage)));
+
+                    log_info("build: building " + virtualPath + " variant " + std::to_string(variantIndex) + "/" +
+                             std::to_string(variantDefines.size()) + " shaderIdHash=" +
+                             std::to_string(bin.shaderIdHash) + " contentHash=" + std::to_string(bin.contentHash) +
+                             " variantHash=" + std::to_string(bin.variantHash) +
+                             " stage=" + std::to_string(static_cast<int>(bin.stage)));
+
+                    auto bytes = write_vshbin(bin);
+                    if (!bytes.isOk())
+                    {
+                        firstError =
+                            "build: failed to serialize vshbin for " + virtualPath + ": " + bytes.error().message;
+                        break;
+                    }
+                    e.blob = std::move(bytes.value());
+
+                    if (seen.find(sig) != seen.end())
+                    {
+                        ++pruned;
+                        log_verbose("build: skipping duplicate entry for " + virtualPath + " variant " +
+                                    std::to_string(variantIndex) + "/" + std::to_string(variantDefines.size()) +
+                                    " keyHash=" + std::to_string(e.keyHash) +
+                                    " stage=" + std::to_string(static_cast<int>(e.stage)));
+                        continue;
+                    }
+
+                    seen.insert(sig);
+                    entries.push_back(std::move(e));
+                }
+
+                if (!firstError.empty())
+                    break;
+            }
         }
 
         if (!firstError.empty())

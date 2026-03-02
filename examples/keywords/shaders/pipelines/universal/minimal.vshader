@@ -1,5 +1,3 @@
-#include "common.glsl"
-
 #pragma vultra language glsl
 
 // Keywords
@@ -136,5 +134,5 @@ void FSMain()
         mat.baseColorFactor;
 
 
-    outColor = vec4(toGamma(baseColor.rgb), 1.0);
+    outColor = baseColor;
 }
