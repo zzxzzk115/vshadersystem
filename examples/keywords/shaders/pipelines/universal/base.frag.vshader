@@ -1,4 +1,8 @@
-#version 460
+[vshader]
+language = glsl
+version  = 460
+
+[fragment]
 
 #include "include/common/gpu_scene.glsl"
 

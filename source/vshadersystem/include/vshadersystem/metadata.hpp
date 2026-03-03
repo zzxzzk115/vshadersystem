@@ -12,10 +12,22 @@ namespace vshadersystem
 {
     struct ParsedMetadata
     {
+        // v0.5.0: structured INI-style shader header.
+        // When true, metadata was parsed from [vshader]/[properties]/[keywords]/[renderstate] blocks.
+        bool isIniStyle = false;
+        // Optional code injected into the shared section (before any stage markers).
+        // Used by ini-style shaders to auto-generate the Material struct.
+        std::string generatedPreamble;
+
         bool           hasMaterialDecl    = false;
         std::string    materialStructName = "Material";
         ShaderLanguage language           = ShaderLanguage::eAuto;
-        uint32_t       renderQueue        = 2000;
+
+        // GLSL: version number for the generated #version directive.
+        // Only used for INI-style shaders (v0.5+) where #version is typically not authored per-stage.
+        // Default is 460.
+        uint32_t glslVersion = 460;
+        uint32_t renderQueue = 2000;
 
         // Entry points for single-file multi-stage shaders.
         // Defaults to "main" for all stages.

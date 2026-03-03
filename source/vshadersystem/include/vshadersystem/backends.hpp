@@ -38,8 +38,10 @@ namespace vshadersystem
         virtual ~IMaterialInjector() = default;
 
         // Returns injectedText + originalSource (or originalSource unchanged).
-        virtual std::string
-        inject(const std::string& originalSource, const std::string& materialStructName, MaterialAccessMode mode) = 0;
+        virtual std::string inject(const std::string& originalSource,
+                                   const std::string& materialStructName,
+                                   MaterialAccessMode mode,
+                                   const std::string& extraAfterMaterialAccess) = 0;
     };
 
     struct BackendBundle

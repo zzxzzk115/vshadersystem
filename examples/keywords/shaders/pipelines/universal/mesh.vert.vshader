@@ -1,4 +1,15 @@
-#version 460
+[vshader]
+language = glsl
+version  = 460
+
+[keywords]
+VTX_HAS_COLOR   : bool permute
+VTX_HAS_NORMAL  : bool permute
+VTX_HAS_UV0     : bool permute
+VTX_HAS_UV1     : bool permute
+VTX_HAS_TANGENT : bool permute
+
+[vertex]
 
 #include "include/common/gpu_scene.glsl"
 
@@ -12,12 +23,6 @@
 // - Legacy-compatible TBN construction (Gram-Schmidt + handedness)
 //
 // ============================================================================
-
-#pragma keyword permute global VTX_HAS_COLOR=0|1
-#pragma keyword permute global VTX_HAS_NORMAL=0|1
-#pragma keyword permute global VTX_HAS_UV0=0|1
-#pragma keyword permute global VTX_HAS_UV1=0|1
-#pragma keyword permute global VTX_HAS_TANGENT=0|1
 
 #if VTX_HAS_COLOR
 layout(location = 0) out vec3 v_Color;
@@ -43,7 +48,7 @@ layout(location = 7) flat out uint v_MaterialIndex;
 
 void main()
 {
-    DrawRecord d = s_Draws.draws[gl_DrawID];
+    DrawRecord d = s_Draws.draws[gl_InstanceIndex];
 
     VertexBuffer vb = VertexBuffer(d.vertexAddress);
     IndexBuffer  ib = IndexBuffer(d.indexAddress);
@@ -52,7 +57,7 @@ void main()
     Vertex v   = vb.vertices[idx];
 
 #if VTX_HAS_COLOR
-    v_Color    = v.color;
+    v_Color = v.color;
 #endif
 
 #if VTX_HAS_UV0
@@ -60,7 +65,7 @@ void main()
 #endif
 
 #if VTX_HAS_UV1
-	v_TexCoord1 = v.texCoord1;
+    v_TexCoord1 = v.texCoord1;
 #endif
 
     vec4 worldPos4 = d.model * vec4(v.position, 1.0);

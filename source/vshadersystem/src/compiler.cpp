@@ -10,7 +10,10 @@
 #include <cstring>
 #include <filesystem>
 #include <fstream>
+#include <iomanip>
 #include <mutex>
+#include <regex>
+#include <sstream>
 #include <string>
 #include <unordered_set>
 #include <utility>
@@ -280,6 +283,104 @@ namespace vshadersystem
             return preamble;
         }
 
+        std::string sanitize_path_component(std::string s)
+        {
+            for (auto& c : s)
+            {
+                if (c == '/' || c == '\\' || c == ':' || c == '*' || c == '?' || c == '"' || c == '<' || c == '>' ||
+                    c == '|')
+                    c = '_';
+            }
+            return s;
+        }
+
+        void try_emit_intermediate_source(const SourceInput& input, const CompileOptions& opt)
+        {
+            if (opt.emitIntermediateDir.empty())
+                return;
+
+            std::error_code ec;
+            std::filesystem::create_directories(opt.emitIntermediateDir, ec);
+            if (ec)
+                return;
+
+            std::string base =
+                input.virtualPath.empty() ? std::string("shader") : sanitize_path_component(input.virtualPath);
+            base += ".";
+            base += stage_name(opt.stage);
+            base += ".final.glsl";
+
+            const auto outPath = std::filesystem::path(opt.emitIntermediateDir) / base;
+
+            std::ofstream f(outPath, std::ios::binary);
+            if (!f)
+                return;
+            f.write(input.sourceText.data(), static_cast<std::streamsize>(input.sourceText.size()));
+        }
+
+        std::vector<std::string> split_lines(const std::string& s)
+        {
+            std::vector<std::string> out;
+            std::istringstream       iss(s);
+            std::string              line;
+            while (std::getline(iss, line))
+                out.push_back(line);
+            // Preserve a trailing empty line if the source ends with '\n'
+            if (!s.empty() && s.back() == '\n')
+                out.push_back(std::string());
+            return out;
+        }
+
+        std::string build_error_context_dump(const std::string&    stageLabel,
+                                             const SourceInput&    input,
+                                             const CompileOptions& opt,
+                                             const std::string&    compilerLog)
+        {
+            if (!opt.dumpSourceOnError)
+                return {};
+
+            const auto lines = split_lines(input.sourceText);
+            if (lines.empty())
+                return {};
+
+            // glslang typically uses: "ERROR: 0:37: ..." and sometimes "WARNING: 0:..."
+            const std::regex re(R"((ERROR|WARNING):\s*(?:\d+|[^:\r\n]+):(\d+):\s*(.*))");
+
+            std::ostringstream out;
+            out << "\n---- SOURCE CONTEXT (" << stageLabel << ") ----\n";
+
+            std::smatch m;
+            std::string hay = compilerLog;
+            bool        any = false;
+
+            while (std::regex_search(hay, m, re))
+            {
+                any              = true;
+                const int lineNo = std::max(1, std::stoi(m[2].str()));
+                const int ctx    = std::max(0, opt.dumpContextLines);
+
+                const int start = std::max(1, lineNo - ctx);
+                const int end   = std::min(static_cast<int>(lines.size()), lineNo + ctx);
+
+                out << m[1].str() << " @ line " << lineNo << ": " << m[3].str() << "\n";
+
+                for (int i = start; i <= end; ++i)
+                {
+                    out << (i == lineNo ? "> " : "  ") << std::setw(4) << i << " | "
+                        << lines[static_cast<size_t>(i - 1)] << "\n";
+                }
+                out << "\n";
+
+                hay = m.suffix().str();
+            }
+
+            if (!any)
+                return {};
+
+            out << "--------------------------------\n";
+            return out.str();
+        }
+
         // ------------------------------------------------------------
         // Recording includer (no StandAlone dependency)
         //
@@ -427,6 +528,9 @@ namespace vshadersystem
     {
         ensure_glslang_initialized();
 
+        if (opt.emitIntermediateAlways)
+            try_emit_intermediate_source(input, opt);
+
         if (input.virtualPath.empty())
         {
             return Result<CompileOutput>::err({ErrorCode::eInvalidArgument, "virtualPath must not be empty."});
@@ -481,6 +585,11 @@ namespace vshadersystem
             log += shader.getInfoLog();
             log += shader.getInfoDebugLog();
 
+            // Append source context dump (and optionally write intermediate source).
+            if (opt.dumpSourceOnError)
+                log += build_error_context_dump(stage_name(opt.stage), input, opt, log);
+            try_emit_intermediate_source(input, opt);
+
             return Result<CompileOutput>::err({ErrorCode::eCompileError, std::move(log)});
         }
 
@@ -496,6 +605,10 @@ namespace vshadersystem
             log += ":\n";
             log += program.getInfoLog();
             log += program.getInfoDebugLog();
+
+            if (opt.dumpSourceOnError)
+                log += build_error_context_dump(stage_name(opt.stage), input, opt, log);
+            try_emit_intermediate_source(input, opt);
 
             return Result<CompileOutput>::err({ErrorCode::eCompileError, std::move(log)});
         }

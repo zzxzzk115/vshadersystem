@@ -330,12 +330,258 @@ namespace vshadersystem
         std::memcpy(dst.valueBuffer, temp, count * sizeof(float));
     }
 
-    Result<ParsedMetadata> parse_vultra_metadata(std::string_view sourceText)
+    // ============================================================
+    // v0.5.0 INI-style shader header parsing
+    //
+    // Supported blocks:
+    //   [vshader]
+    //   [properties]
+    //   [keywords]
+    //   [renderstate]
+    //
+    // Stages are handled by system.cpp via markers.
+    // ============================================================
+
+    static inline bool is_ini_style_shader(std::string_view src)
+    {
+        size_t i = 0;
+        while (i < src.size())
+        {
+            size_t j = src.find('\n', i);
+            if (j == std::string_view::npos)
+                j = src.size();
+
+            std::string_view line = src.substr(i, j - i);
+            i                     = (j == src.size()) ? j : (j + 1);
+
+            if (!line.empty() && line.back() == '\r')
+                line = line.substr(0, line.size() - 1);
+
+            auto t = line;
+            while (!t.empty() && std::isspace(static_cast<unsigned char>(t.front())))
+                t.remove_prefix(1);
+            while (!t.empty() && std::isspace(static_cast<unsigned char>(t.back())))
+                t.remove_suffix(1);
+
+            if (t.empty())
+                continue;
+            if (starts_with(t, "//") || starts_with(t, ";"))
+                continue;
+
+            return t == "[vshader]";
+        }
+        return false;
+    }
+
+    static inline std::string to_lower(std::string s)
+    {
+        for (auto& c : s)
+            c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+        return s;
+    }
+
+    static inline std::string_view strip_inline_comment(std::string_view s)
+    {
+        // remove // comment when not in quotes (we don't support quotes here)
+        const size_t p = s.find("//");
+        if (p != std::string_view::npos)
+            s = s.substr(0, p);
+        // remove ';' style comments as whole-line; inline ';' is allowed in GLSL so ignore.
+        return s;
+    }
+
+    static inline bool parse_on_off(std::string_view v, bool& outBool)
+    {
+        std::string vv(v);
+        vv = trim(vv);
+        vv = to_lower(vv);
+        if (vv == "on" || vv == "true" || vv == "1")
+        {
+            outBool = true;
+            return true;
+        }
+        if (vv == "off" || vv == "false" || vv == "0")
+        {
+            outBool = false;
+            return true;
+        }
+        return false;
+    }
+
+    static inline bool parse_compare_op_ini(std::string_view v, CompareOp& outOp)
+    {
+        std::string vv = to_lower(trim(std::string(v)));
+        if (vv == "less")
+        {
+            outOp = CompareOp::eLess;
+            return true;
+        }
+        if (vv == "lequal" || vv == "less_equal" || vv == "lessorequal")
+        {
+            outOp = CompareOp::eLessOrEqual;
+            return true;
+        }
+        if (vv == "greater")
+        {
+            outOp = CompareOp::eGreater;
+            return true;
+        }
+        if (vv == "gequal" || vv == "greater_equal" || vv == "greaterorequal")
+        {
+            outOp = CompareOp::eGreaterOrEqual;
+            return true;
+        }
+        if (vv == "equal")
+        {
+            outOp = CompareOp::eEqual;
+            return true;
+        }
+        if (vv == "always")
+        {
+            outOp = CompareOp::eAlways;
+            return true;
+        }
+        if (vv == "never")
+        {
+            outOp = CompareOp::eNever;
+            return true;
+        }
+        return false;
+    }
+
+    static inline bool parse_cull_ini(std::string_view v, CullMode& outCull)
+    {
+        std::string vv = to_lower(trim(std::string(v)));
+        if (vv == "none" || vv == "off")
+        {
+            outCull = CullMode::eNone;
+            return true;
+        }
+        if (vv == "front")
+        {
+            outCull = CullMode::eFront;
+            return true;
+        }
+        if (vv == "back")
+        {
+            outCull = CullMode::eBack;
+            return true;
+        }
+        return false;
+    }
+
+    static inline bool
+    parse_property_line(std::string_view line, std::string& outName, std::string& outType, std::string& outDefaultExpr)
+    {
+        // name : type = default
+        // name : Texture2D
+        outName.clear();
+        outType.clear();
+        outDefaultExpr.clear();
+
+        std::string s(trim(std::string(line)));
+        if (s.empty())
+            return false;
+        if (!s.empty() && s.back() == ';')
+            s.pop_back();
+
+        const size_t colon = s.find(':');
+        if (colon == std::string::npos)
+            return false;
+
+        outName          = trim(s.substr(0, colon));
+        std::string rest = trim(s.substr(colon + 1));
+
+        const size_t eq = rest.find('=');
+        if (eq == std::string::npos)
+        {
+            outType = trim(rest);
+            return !outName.empty() && !outType.empty();
+        }
+
+        outType        = trim(rest.substr(0, eq));
+        outDefaultExpr = trim(rest.substr(eq + 1));
+        return !outName.empty() && !outType.empty();
+    }
+
+    static inline std::string glsl_type_from_property_type(const std::string& tyLower)
+    {
+        if (tyLower == "float")
+            return "float";
+        if (tyLower == "int")
+            return "int";
+        if (tyLower == "uint")
+            return "uint";
+        if (tyLower == "bool")
+            return "bool";
+        if (tyLower == "vec2")
+            return "vec2";
+        if (tyLower == "vec3")
+            return "vec3";
+        if (tyLower == "vec4")
+            return "vec4";
+        if (tyLower == "mat3")
+            return "mat3";
+        if (tyLower == "mat4")
+            return "mat4";
+        return {};
+    }
+
+    static inline bool is_texture_type(const std::string& tyLower) { return starts_with(tyLower, "texture"); }
+
+    static Result<ParsedMetadata> parse_ini_metadata(std::string_view sourceText)
     {
         ParsedMetadata out;
+        out.isIniStyle = true;
 
-        std::string line;
-        line.reserve(512);
+        std::string curSection;
+
+        // For Material auto-generation
+        struct PropDecl
+        {
+            std::string name;
+            std::string typeLower;
+            std::string glslType;
+            bool        isTexture = false;
+
+            // default for non-texture
+            bool               hasDefault = false;
+            std::vector<float> defaultValues;
+        };
+
+        std::vector<PropDecl> props;
+        props.reserve(64);
+
+        auto flush_preamble = [&]() {
+            if (props.empty())
+                return;
+
+            out.hasMaterialDecl    = true;
+            out.materialStructName = "Material";
+
+            std::string code;
+            code += "// ============================================================\n";
+            code += "// vshadersystem v0.5: auto-generated Material struct\n";
+            code += "// ============================================================\n";
+            code += "struct " + out.materialStructName + "\n";
+            code += "{\n";
+            for (const auto& p : props)
+            {
+                if (p.isTexture)
+                {
+                    // Texture properties are represented as an integer index.
+                    // The sampling/binding model is engine-defined.
+                    code += "    int " + p.name + "_index;\n";
+                }
+                else
+                {
+                    code += "    " + p.glslType + " " + p.name + ";\n";
+                }
+            }
+            code += "};\n\n";
+
+            out.generatedPreamble = std::move(code);
+        };
 
         size_t i = 0;
         while (i < sourceText.size())
@@ -343,559 +589,298 @@ namespace vshadersystem
             size_t j = sourceText.find('\n', i);
             if (j == std::string_view::npos)
                 j = sourceText.size();
-            std::string_view sv = sourceText.substr(i, j - i);
-            i                   = (j == sourceText.size()) ? j : (j + 1);
 
-            // Strip CR
-            if (!sv.empty() && sv.back() == '\r')
-                sv = sv.substr(0, sv.size() - 1);
+            std::string_view line = sourceText.substr(i, j - i);
+            i                     = (j == sourceText.size()) ? j : (j + 1);
 
-            std::string_view s = sv;
-            // Left trim
-            while (!s.empty() && std::isspace(static_cast<unsigned char>(s.front())))
-                s.remove_prefix(1);
+            if (!line.empty() && line.back() == '\r')
+                line = line.substr(0, line.size() - 1);
 
-            const bool isVultra  = starts_with(s, "#pragma vultra");
-            const bool isKeyword = starts_with(s, "#pragma keyword");
-            if (!isVultra && !isKeyword)
+            line = strip_inline_comment(line);
+
+            std::string t = trim(std::string(line));
+            if (t.empty())
                 continue;
 
-            // Tokenize by spaces (attributes stay as a single token because they contain parentheses, no spaces
-            // inside).
-            std::vector<std::string_view> toks;
+            // section header
+            if (t.size() >= 3 && t.front() == '[' && t.back() == ']')
             {
-                size_t k = 0;
-                while (k < s.size())
-                {
-                    while (k < s.size() && std::isspace(static_cast<unsigned char>(s[k])))
-                        ++k;
-                    if (k >= s.size())
-                        break;
-                    size_t k2 = k;
-                    while (k2 < s.size() && !std::isspace(static_cast<unsigned char>(s[k2])))
-                        ++k2;
-                    toks.push_back(s.substr(k, k2 - k));
-                    k = k2;
-                }
+                curSection = to_lower(t.substr(1, t.size() - 2));
+                continue;
             }
 
-            if (toks.size() < 3)
+            if (curSection == "vshader")
             {
-                if (isVultra)
-                    return Result<ParsedMetadata>::err(
-                        {ErrorCode::eParseError, "Invalid #pragma vultra line (too few tokens)."});
+                // key = value
+                const size_t eq = t.find('=');
+                if (eq == std::string::npos)
+                    continue;
+                std::string key    = to_lower(trim(t.substr(0, eq)));
+                std::string valRaw = trim(t.substr(eq + 1));
+                std::string val    = to_lower(valRaw);
+
+                if (key == "language")
+                {
+                    if (val == "glsl")
+                        out.language = ShaderLanguage::eGLSL;
+                    else if (val == "slang")
+                        out.language = ShaderLanguage::eSlang;
+                    else
+                        out.language = ShaderLanguage::eAuto;
+                }
+                else if (key == "version" || key == "target_version")
+                {
+                    // GLSL version (e.g. 460). Keep permissive: digits only.
+                    uint32_t v  = 0;
+                    bool     ok = !valRaw.empty();
+                    for (char c : valRaw)
+                    {
+                        if (c < '0' || c > '9')
+                        {
+                            ok = false;
+                            break;
+                        }
+                        v = v * 10u + static_cast<uint32_t>(c - '0');
+                    }
+
+                    if (ok && v >= 110)
+                        out.glslVersion = v;
+                }
+                else if (key == "material")
+                {
+                    out.materialStructName = trim(t.substr(eq + 1));
+                    if (out.materialStructName.empty())
+                        out.materialStructName = "Material";
+                }
+                else if (key == "render_queue" || key == "renderqueue")
+                {
+                    if (is_number(val))
+                        out.renderQueue = static_cast<uint32_t>(std::stoul(val));
+                }
+
+                continue;
+            }
+
+            if (curSection == "keywords")
+            {
+                // NAME : <bool|enum(...)> <permute|runtime|special> [scope]
+                const size_t colon = t.find(':');
+                if (colon == std::string::npos)
+                    continue;
+                std::string name = trim(t.substr(0, colon));
+                std::string rhs  = trim(t.substr(colon + 1));
+                if (name.empty() || rhs.empty())
+                    continue;
+
+                std::stringstream ss(rhs);
+                std::string       typeTok;
+                std::string       dispatchTok;
+                std::string       scopeTok;
+                ss >> typeTok;
+                ss >> dispatchTok;
+                ss >> scopeTok;
+
+                KeywordDecl kd;
+                kd.name = name;
+
+                // type
+                std::string typeLower = to_lower(typeTok);
+                if (typeLower == "bool")
+                {
+                    kd.kind = KeywordValueKind::eBool;
+                }
+                else if (starts_with(typeLower, "enum"))
+                {
+                    kd.kind = KeywordValueKind::eEnum;
+                    // enum(a,b,c)
+                    const size_t lp = typeLower.find('(');
+                    const size_t rp = typeLower.find(')');
+                    if (lp != std::string::npos && rp != std::string::npos && rp > lp + 1)
+                    {
+                        std::string       inner = typeLower.substr(lp + 1, rp - lp - 1);
+                        std::stringstream ess(inner);
+                        std::string       item;
+                        while (std::getline(ess, item, ','))
+                        {
+                            item = trim(item);
+                            if (!item.empty())
+                                kd.enumValues.push_back(item);
+                        }
+                    }
+                    if (kd.enumValues.empty())
+                        kd.enumValues.push_back("0");
+                    kd.defaultValue = 0;
+                }
                 else
-                    return Result<ParsedMetadata>::err(
-                        {ErrorCode::eParseError, "Invalid #pragma keyword line (too few tokens)."});
+                {
+                    // fallback -> bool
+                    kd.kind = KeywordValueKind::eBool;
+                }
+
+                // dispatch
+                std::string dispLower = to_lower(dispatchTok);
+                if (dispLower == "permute")
+                    kd.dispatch = KeywordDispatch::ePermutation;
+                else if (dispLower == "special")
+                    kd.dispatch = KeywordDispatch::eSpecialization;
+                else
+                    kd.dispatch = KeywordDispatch::eRuntime;
+
+                // scope optional
+                std::string scopeLower = to_lower(scopeTok);
+                if (scopeLower == "global")
+                    kd.scope = KeywordScope::eGlobal;
+                else if (scopeLower == "material")
+                    kd.scope = KeywordScope::eMaterial;
+                else if (scopeLower == "pass")
+                    kd.scope = KeywordScope::ePass;
+                else
+                    kd.scope = KeywordScope::eShaderLocal;
+
+                out.keywords.push_back(std::move(kd));
+                continue;
             }
 
-            // ------------------------------------------------------------
-            // #pragma keyword ...
-            // Grammar (minimal, whitespace-tokenized):
-            //   #pragma keyword <permute|runtime|special> [<global|material|pass|local>] <NAME>[=<DEFAULT_OR_ENUMS>]
-            // Examples:
-            //   #pragma keyword permute ALPHA_TEST
-            //   #pragma keyword runtime global DEBUG_VIEW=NONE|NORMAL|ALBEDO
-            //   #pragma keyword permute SURFACE=OPAQUE|CUTOUT|TRANSPARENT
-            // Notes:
-            // - Enum values are separated by '|'
-            // - Default value for enum is the first enumerant unless explicitly provided as NAME=Value (Value must
-            // match an enumerant).
-            // - For bool, default is 0 unless NAME=1 is provided.
-            // ------------------------------------------------------------
-            if (isKeyword)
+            if (curSection == "renderstate")
             {
-                if (toks.size() < 4)
-                    return Result<ParsedMetadata>::err(
-                        {ErrorCode::eParseError, "keyword pragma requires at least <dispatch> <name>."});
+                const size_t eq = t.find('=');
+                if (eq == std::string::npos)
+                    continue;
+                std::string key = to_lower(trim(t.substr(0, eq)));
+                std::string val = trim(t.substr(eq + 1));
 
-                KeywordDecl decl;
+                out.renderStateExplicit = true;
 
-                auto parse_dispatch = [&](std::string_view s, KeywordDispatch& outDispatch) -> bool {
-                    if (s == "permute")
-                    {
-                        outDispatch = KeywordDispatch::ePermutation;
-                        return true;
-                    }
-                    if (s == "runtime")
-                    {
-                        outDispatch = KeywordDispatch::eRuntime;
-                        return true;
-                    }
-                    if (s == "special")
-                    {
-                        outDispatch = KeywordDispatch::eSpecialization;
-                        return true;
-                    }
-                    return false;
-                };
-                auto parse_scope = [&](std::string_view s, KeywordScope& outScope) -> bool {
-                    if (s == "global")
-                    {
-                        outScope = KeywordScope::eGlobal;
-                        return true;
-                    }
-                    if (s == "material")
-                    {
-                        outScope = KeywordScope::eMaterial;
-                        return true;
-                    }
-                    if (s == "pass")
-                    {
-                        outScope = KeywordScope::ePass;
-                        return true;
-                    }
-                    if (s == "local" || s == "shader" || s == "shaderlocal")
-                    {
-                        outScope = KeywordScope::eShaderLocal;
-                        return true;
-                    }
-                    return false;
-                };
-
-                if (!parse_dispatch(toks[2], decl.dispatch))
-                    return Result<ParsedMetadata>::err(
-                        {ErrorCode::eParseError, "Unknown keyword dispatch: " + std::string(toks[2])});
-
-                size_t idx = 3;
-                // optional scope
+                if (key == "cull")
                 {
-                    KeywordScope sc;
-                    if (idx < toks.size() && parse_scope(toks[idx], sc))
-                    {
-                        decl.scope = sc;
-                        ++idx;
-                    }
+                    (void)parse_cull_ini(val, out.renderState.cull);
                 }
-
-                if (idx >= toks.size())
-                    return Result<ParsedMetadata>::err(
-                        {ErrorCode::eParseError, "keyword pragma requires a keyword name."});
-
-                // Parse NAME or NAME=...
-                std::string_view nameToken = toks[idx++];
-                std::string_view namePart  = nameToken;
-                std::string_view rhsPart   = {};
-                auto             eqPos     = nameToken.find('=');
-                if (eqPos != std::string_view::npos)
+                else if (key == "depth_test" || key == "depthtest")
                 {
-                    namePart = nameToken.substr(0, eqPos);
-                    rhsPart  = nameToken.substr(eqPos + 1);
+                    (void)parse_on_off(val, out.renderState.depthTest);
                 }
-
-                decl.name = std::string(namePart);
-
-                if (!rhsPart.empty())
+                else if (key == "depth_write" || key == "depthwrite")
                 {
-                    // Decide bool vs enum
-                    if (rhsPart == "0" || rhsPart == "1")
+                    (void)parse_on_off(val, out.renderState.depthWrite);
+                }
+                else if (key == "depth_func" || key == "depthfunc" || key == "depth_compare" || key == "depthcompare")
+                {
+                    (void)parse_compare_op_ini(val, out.renderState.depthFunc);
+                }
+                else if (key == "blend")
+                {
+                    (void)parse_on_off(val, out.renderState.blendEnable);
+                }
+                else if (key == "alpha_to_coverage" || key == "alphatocoverage")
+                {
+                    (void)parse_on_off(val, out.renderState.alphaToCoverage);
+                }
+                else if (key == "depth_bias" || key == "depthbias")
+                {
+                    // "factor units" or "(factor,units)"
+                    std::vector<float> vs;
+                    std::string        vv = trim(std::string(val));
+                    if (!vv.empty() && vv.front() == '(')
                     {
-                        decl.kind         = KeywordValueKind::eBool;
-                        decl.defaultValue = (rhsPart == "1") ? 1u : 0u;
+                        if (parse_parenthesized_list(vv, vs) && vs.size() >= 2)
+                        {
+                            out.renderState.depthBiasFactor = vs[0];
+                            out.renderState.depthBiasUnits  = vs[1];
+                        }
                     }
                     else
                     {
-                        decl.kind = KeywordValueKind::eEnum;
-
-                        // Split by '|'
-                        size_t p0 = 0;
-                        while (p0 <= rhsPart.size())
-                        {
-                            auto p1 = rhsPart.find('|', p0);
-                            if (p1 == std::string_view::npos)
-                                p1 = rhsPart.size();
-                            auto item = rhsPart.substr(p0, p1 - p0);
-                            if (!item.empty())
-                                decl.enumValues.emplace_back(item);
-                            if (p1 == rhsPart.size())
-                                break;
-                            p0 = p1 + 1;
-                        }
-
-                        if (decl.enumValues.empty())
-                            return Result<ParsedMetadata>::err(
-                                {ErrorCode::eParseError, "Enum keyword requires at least one value: " + decl.name});
-
-                        // default = first enumerant
-                        decl.defaultValue = 0;
+                        std::stringstream ss(vv);
+                        ss >> out.renderState.depthBiasFactor;
+                        ss >> out.renderState.depthBiasUnits;
                     }
+                }
+                continue;
+            }
+
+            if (curSection == "properties")
+            {
+                std::string name;
+                std::string ty;
+                std::string def;
+                if (!parse_property_line(t, name, ty, def))
+                    continue;
+
+                PropDecl p;
+                p.name      = name;
+                p.typeLower = to_lower(ty);
+                p.isTexture = is_texture_type(p.typeLower);
+                p.glslType  = glsl_type_from_property_type(p.typeLower);
+
+                if (!p.isTexture && p.glslType.empty())
+                {
+                    return Result<ParsedMetadata>::err(
+                        {ErrorCode::eParseError, "Unknown property type: " + ty + " for '" + name + "'"});
+                }
+
+                // Default values
+                if (!p.isTexture && !def.empty())
+                {
+                    std::vector<float> values;
+                    std::string        d = def;
+                    d                    = trim(d);
+                    if (!d.empty() && d.front() != '(')
+                    {
+                        // scalar
+                        float v = 0.0f;
+                        if (!parse_float(d, v))
+                            return Result<ParsedMetadata>::err(
+                                {ErrorCode::eParseError, "Invalid default for property '" + name + "'"});
+                        values.push_back(v);
+                    }
+                    else
+                    {
+                        if (!parse_parenthesized_list(d, values))
+                            return Result<ParsedMetadata>::err(
+                                {ErrorCode::eParseError, "Invalid default for property '" + name + "'"});
+                    }
+                    p.hasDefault    = true;
+                    p.defaultValues = std::move(values);
+
+                    ParsedMetadata::ParamMeta pm;
+                    pm.semantic   = Semantic::eUnknown;
+                    pm.hasDefault = true;
+                    write_default(pm.defaultValue, p.defaultValues);
+                    out.params[p.name] = pm;
+                }
+                else if (!p.isTexture)
+                {
+                    ParsedMetadata::ParamMeta pm;
+                    pm.semantic        = Semantic::eUnknown;
+                    pm.hasDefault      = false;
+                    out.params[p.name] = pm;
                 }
                 else
                 {
-                    // No rhs => bool default 0
-                    decl.kind         = KeywordValueKind::eBool;
-                    decl.defaultValue = 0;
+                    ParsedMetadata::TextureMeta tm;
+                    tm.semantic          = Semantic::eUnknown;
+                    out.textures[p.name] = tm;
                 }
 
-                // Remaining tokens are treated as raw constraints (optional), stored verbatim.
-                // We keep this flexible so you can later implement only_if(...) parsing without breaking sources.
-                if (idx < toks.size())
-                {
-                    std::string c;
-                    for (size_t t = idx; t < toks.size(); ++t)
-                    {
-                        if (!c.empty())
-                            c.push_back(' ');
-                        c += std::string(toks[t]);
-                    }
-                    decl.constraint = c;
-                }
-
-                out.keywords.push_back(std::move(decl));
+                props.push_back(std::move(p));
                 continue;
-            }
-
-            // ------------------------------------------------------------
-            // #pragma vultra ...
-            // toks[0] = #pragma, toks[1] = vultra, toks[2] = keyword
-            // ------------------------------------------------------------
-            const auto keyword = toks[2];
-
-            if (keyword == "material")
-            {
-                out.hasMaterialDecl = true;
-                if (toks.size() >= 4)
-                    out.materialStructName = toks[3];
-                continue;
-            }
-            else if (keyword == "language")
-            {
-                if (toks.size() < 4)
-                    return Result<ParsedMetadata>::err({ErrorCode::eParseError, "language requires glsl|slang|auto"});
-                auto v = toks[3];
-                if (v == "glsl")
-                    out.language = ShaderLanguage::eGLSL;
-                else if (v == "slang")
-                    out.language = ShaderLanguage::eSlang;
-                else
-                    out.language = ShaderLanguage::eAuto;
-                continue;
-            }
-
-            else if (keyword == "entry")
-            {
-                if (toks.size() < 5)
-                    return Result<ParsedMetadata>::err({ErrorCode::eParseError, "entry requires: <stage> <name>"});
-
-                const auto st = toks[3];
-                const auto nm = std::string(toks[4]);
-
-                auto set_entry = [&](ShaderStage s, const std::string& name) {
-                    switch (s)
-                    {
-                        case ShaderStage::eVert:
-                            out.entryVert = name;
-                            break;
-                        case ShaderStage::eFrag:
-                            out.entryFrag = name;
-                            break;
-                        case ShaderStage::eComp:
-                            out.entryComp = name;
-                            break;
-                        case ShaderStage::eTask:
-                            out.entryTask = name;
-                            break;
-                        case ShaderStage::eMesh:
-                            out.entryMesh = name;
-                            break;
-                        default:
-                            break;
-                    }
-                };
-
-                ShaderStage stage = ShaderStage::eUnknown;
-                if (st == "vert")
-                    stage = ShaderStage::eVert;
-                else if (st == "frag")
-                    stage = ShaderStage::eFrag;
-                else if (st == "comp")
-                    stage = ShaderStage::eComp;
-                else if (st == "task")
-                    stage = ShaderStage::eTask;
-                else if (st == "mesh")
-                    stage = ShaderStage::eMesh;
-                else
-                    return Result<ParsedMetadata>::err(
-                        {ErrorCode::eParseError, "Unknown entry stage: " + std::string(st)});
-
-                set_entry(stage, nm);
-                continue;
-            }
-
-            else if (keyword == "queue")
-            {
-                if (toks.size() < 4)
-                    return Result<ParsedMetadata>::err({ErrorCode::eParseError, "queue requires a value"});
-                auto v = toks[3];
-                if (is_number(v))
-                    out.renderQueue = static_cast<uint32_t>(std::strtoul(std::string(v).c_str(), nullptr, 10));
-                else if (v == "Opaque")
-                    out.renderQueue = 2000;
-                else if (v == "Transparent")
-                    out.renderQueue = 3000;
-                else if (v == "Overlay")
-                    out.renderQueue = 4000;
-                else
-                    out.renderQueue = 2000;
-                continue;
-            }
-            else if (keyword == "param")
-            {
-                if (toks.size() < 4)
-                    return Result<ParsedMetadata>::err(
-                        {ErrorCode::eParseError, "param pragma requires a parameter name."});
-
-                std::string name(toks[3]);
-                auto&       meta = out.params[name];
-
-                for (size_t t = 4; t < toks.size(); ++t)
-                {
-                    std::string_view payload;
-
-                    if (parse_attr(toks[t], "semantic", payload))
-                    {
-                        Semantic sem = Semantic::eUnknown;
-                        if (!parse_semantic(payload, sem))
-                            return Result<ParsedMetadata>::err(
-                                {ErrorCode::eParseError, "Unknown semantic: " + std::string(payload)});
-                        meta.semantic = sem;
-                        continue;
-                    }
-
-                    if (parse_attr(toks[t], "default", payload))
-                    {
-                        std::vector<float> values;
-                        if (!parse_parenthesized_list(std::string("(") + std::string(payload) + ")", values))
-                        {
-                            // Accept "default(1,2,3)" where payload is "1,2,3" (already without parentheses by
-                            // parse_attr). We re-wrap to reuse parser.
-                            values.clear();
-                            std::string wrapped = "(" + std::string(payload) + ")";
-                            if (!parse_parenthesized_list(wrapped, values))
-                                return Result<ParsedMetadata>::err(
-                                    {ErrorCode::eParseError, "Invalid default(...) list."});
-                        }
-                        meta.hasDefault = true;
-
-                        write_default(meta.defaultValue, values);
-                        continue;
-                    }
-
-                    if (parse_attr(toks[t], "range", payload))
-                    {
-                        std::vector<float> values;
-                        std::string        wrapped = "(" + std::string(payload) + ")";
-                        if (!parse_parenthesized_list(wrapped, values) || values.size() != 2)
-                            return Result<ParsedMetadata>::err(
-                                {ErrorCode::eParseError, "range(min,max) expects exactly two numbers."});
-                        meta.hasRange  = true;
-                        meta.range.min = values[0];
-                        meta.range.max = values[1];
-                        continue;
-                    }
-
-                    return Result<ParsedMetadata>::err(
-                        {ErrorCode::eParseError, "Unknown param attribute token: " + std::string(toks[t])});
-                }
-            }
-            else if (keyword == "texture")
-            {
-                if (toks.size() < 4)
-                    return Result<ParsedMetadata>::err(
-                        {ErrorCode::eParseError, "texture pragma requires a texture name."});
-
-                std::string name(toks[3]);
-                auto&       meta = out.textures[name];
-
-                for (size_t t = 4; t < toks.size(); ++t)
-                {
-                    std::string_view payload;
-
-                    if (parse_attr(toks[t], "semantic", payload))
-                    {
-                        Semantic sem = Semantic::eUnknown;
-                        if (!parse_semantic(payload, sem))
-                            return Result<ParsedMetadata>::err(
-                                {ErrorCode::eParseError, "Unknown semantic: " + std::string(payload)});
-                        meta.semantic = sem;
-                        continue;
-                    }
-
-                    return Result<ParsedMetadata>::err(
-                        {ErrorCode::eParseError, "Unknown texture attribute token: " + std::string(toks[t])});
-                }
-            }
-            else if (keyword == "render")
-            {
-                // v1: opaque/transparent only; renderer maps it to queues
-                // We store this indirectly via blend/depth hints and future flags.
-                out.renderStateExplicit = true;
-                // Accept token but no storage yet; kept for future extension.
-                continue;
-            }
-            else if (keyword == "state")
-            {
-                auto subKeyword = toks[3];
-                if (subKeyword == "Blend")
-                {
-                    if (toks.size() < 6)
-                        return Result<ParsedMetadata>::err({ErrorCode::eParseError, "Blend requires src dst"});
-
-                    BlendFactor src;
-                    BlendFactor dst;
-
-                    if (!parse_blend_factor(toks[4], src))
-                        return Result<ParsedMetadata>::err(
-                            {ErrorCode::eParseError, "Unknown blend source factor: " + std::string(toks[4])});
-
-                    if (!parse_blend_factor(toks[5], dst))
-                        return Result<ParsedMetadata>::err(
-                            {ErrorCode::eParseError, "Unknown blend destination factor: " + std::string(toks[5])});
-
-                    out.renderState.blendEnable = true;
-                    out.renderState.srcColor    = src;
-                    out.renderState.dstColor    = dst;
-                    out.renderState.srcAlpha    = src;
-                    out.renderState.dstAlpha    = dst;
-
-                    out.renderStateExplicit = true;
-                }
-                else if (subKeyword == "BlendOp")
-                {
-                    if (toks.size() < 6)
-                        return Result<ParsedMetadata>::err(
-                            {ErrorCode::eParseError, "BlendOp requires colorOp alphaOp"});
-
-                    BlendOp colorOp;
-                    BlendOp alphaOp;
-
-                    if (!parse_blend_op(toks[4], colorOp))
-                        return Result<ParsedMetadata>::err(
-                            {ErrorCode::eParseError, "Unknown blend color operation: " + std::string(toks[4])});
-
-                    if (!parse_blend_op(toks[5], alphaOp))
-                        return Result<ParsedMetadata>::err(
-                            {ErrorCode::eParseError, "Unknown blend alpha operation: " + std::string(toks[5])});
-
-                    out.renderState.blendEnable = true;
-                    out.renderState.colorOp     = colorOp;
-                    out.renderState.alphaOp     = alphaOp;
-
-                    out.renderStateExplicit = true;
-                }
-                else if (subKeyword == "ZTest")
-                {
-                    if (toks.size() < 5)
-                        return Result<ParsedMetadata>::err({ErrorCode::eParseError, "ZTest pragma requires On|Off"});
-                    bool v = true;
-                    if (!parse_bool_token(toks[4], v))
-                        return Result<ParsedMetadata>::err({ErrorCode::eParseError, "ZTest expects On|Off"});
-                    out.renderState.depthTest = v;
-                    out.renderStateExplicit   = true;
-                }
-                else if (subKeyword == "ZWrite")
-                {
-                    if (toks.size() < 5)
-                        return Result<ParsedMetadata>::err({ErrorCode::eParseError, "ZWrite pragma requires On|Off"});
-                    bool v = true;
-                    if (!parse_bool_token(toks[4], v))
-                        return Result<ParsedMetadata>::err({ErrorCode::eParseError, "ZWrite expects On|Off"});
-                    out.renderState.depthWrite = v;
-                    out.renderStateExplicit    = true;
-                }
-                else if (subKeyword == "CompareOp")
-                {
-                    if (toks.size() < 5)
-                        return Result<ParsedMetadata>::err(
-                            {ErrorCode::eParseError, "CompareOp pragma requires a comparison function"});
-                    CompareOp f;
-                    if (!parse_compare_op(toks[4], f))
-                        return Result<ParsedMetadata>::err(
-                            {ErrorCode::eParseError, "Unknown compare op: " + std::string(toks[4])});
-                    out.renderState.depthFunc = f;
-                    out.renderStateExplicit   = true;
-                }
-                else if (subKeyword == "Cull")
-                {
-                    if (toks.size() < 5)
-                        return Result<ParsedMetadata>::err(
-                            {ErrorCode::eParseError, "Cull pragma requires None|Back|Front"});
-                    CullMode c;
-                    if (!parse_cull(toks[4], c))
-                        return Result<ParsedMetadata>::err(
-                            {ErrorCode::eParseError, "Unknown cull mode: " + std::string(toks[4])});
-                    out.renderState.cull    = c;
-                    out.renderStateExplicit = true;
-                }
-                else if (subKeyword == "AlphaToCoverage")
-                {
-                    if (toks.size() < 5)
-                        return Result<ParsedMetadata>::err({ErrorCode::eParseError, "AlphaToCoverage requires On|Off"});
-                    bool v = true;
-                    if (!parse_bool_token(toks[4], v))
-                        return Result<ParsedMetadata>::err({ErrorCode::eParseError, "AlphaToCoverage expects On|Off"});
-                    out.renderState.alphaToCoverage = v;
-                    out.renderStateExplicit         = true;
-                }
-                else if (subKeyword == "ColorMask")
-                {
-                    if (toks.size() < 5)
-                        return Result<ParsedMetadata>::err(
-                            {ErrorCode::eParseError, "ColorMask requires a combination of R,G,B,A"});
-                    uint8_t mask = 0;
-                    for (char c : toks[4])
-                    {
-                        switch (c)
-                        {
-                            case 'R':
-                                mask |= static_cast<uint8_t>(ColorMaskFlagBits::eColorMaskR);
-                                break;
-                            case 'G':
-                                mask |= static_cast<uint8_t>(ColorMaskFlagBits::eColorMaskG);
-                                break;
-                            case 'B':
-                                mask |= static_cast<uint8_t>(ColorMaskFlagBits::eColorMaskB);
-                                break;
-                            case 'A':
-                                mask |= static_cast<uint8_t>(ColorMaskFlagBits::eColorMaskA);
-                                break;
-                            default:
-                                return Result<ParsedMetadata>::err(
-                                    {ErrorCode::eParseError, "Unknown color mask character: " + std::string(1, c)});
-                        }
-                    }
-                    out.renderState.colorMask = mask;
-                    out.renderStateExplicit   = true;
-                }
-                else if (subKeyword == "DepthBias")
-                {
-                    if (toks.size() < 6)
-                        return Result<ParsedMetadata>::err(
-                            {ErrorCode::eParseError, "DepthBias requires two float values: factor and units"});
-
-                    float factor = 0.0f;
-                    float units  = 0.0f;
-
-                    if (!parse_float(toks[4], factor))
-                        return Result<ParsedMetadata>::err(
-                            {ErrorCode::eParseError, "Invalid DepthBias factor value: " + std::string(toks[4])});
-
-                    if (!parse_float(toks[5], units))
-                        return Result<ParsedMetadata>::err(
-                            {ErrorCode::eParseError, "Invalid DepthBias units value: " + std::string(toks[5])});
-
-                    out.renderState.depthBiasFactor = factor;
-                    out.renderState.depthBiasUnits  = units;
-                    out.renderStateExplicit         = true;
-                }
-            }
-            else
-            {
-                return Result<ParsedMetadata>::err(
-                    {ErrorCode::eParseError, "Unknown #pragma vultra keyword: " + std::string(keyword)});
             }
         }
 
+        flush_preamble();
+
         return Result<ParsedMetadata>::ok(std::move(out));
+    }
+
+    Result<ParsedMetadata> parse_vultra_metadata(std::string_view sourceText)
+    {
+        if (!is_ini_style_shader(sourceText))
+        {
+            return Result<ParsedMetadata>::err({ErrorCode::eParseError,
+                                                "vshadersystem v0.5.0: legacy #pragma syntax is not supported. "
+                                                "Use INI-style sections like [vshader]/[properties]/[vert]/[frag]."});
+        }
+
+        return parse_ini_metadata(sourceText);
     }
 } // namespace vshadersystem

@@ -61,6 +61,11 @@ Options (compile):
   --keywords-file <vkw>  Load engine_keywords.vkw and inject global permute values if shader declares them
   --no-cache             Disable cache
   --cache <dir>          Cache directory (default: .vshader_cache)
+  --dump                 On compile error, print a 10-line source context (default: on)
+  --no-dump              Disable source context dump
+  --dump-context <N>     Context lines above/below (default: 5)
+  --emit-intermediate <dir>  Write final GLSL to <dir> on error (and on success with --emit-always)
+  --emit-always          Emit final GLSL even on success
   --verbose              Verbose logging
 
 Options (build):
@@ -71,6 +76,11 @@ Options (build):
   --no-cache             Disable cache
   --cache <dir>          Cache directory (default: .vshader_cache)
   --skip-invalid          Skip variants failing only_if constraints
+  --dump                  On compile error, print a 10-line source context (default: on)
+  --no-dump               Disable source context dump
+  --dump-context <N>      Context lines above/below (default: 5)
+  --emit-intermediate <dir>  Write final GLSL to <dir> on error (and on success with --emit-always)
+  --emit-always           Emit final GLSL even on success
   --verbose               Verbose logging
 
 Options (packlib):
@@ -486,6 +496,10 @@ static int cmd_compile(int argc, char** argv)
     bool                     verbose         = false;
     std::string              materialModeStr = "bda";
     std::string              languageStr     = "auto";
+    bool                     dumpOnError     = true;
+    int                      dumpContext     = 5;
+    std::string              emitIntermediateDir;
+    bool                     emitAlways = false;
 
     for (int i = 2; i < argc; ++i)
     {
@@ -555,6 +569,26 @@ static int cmd_compile(int argc, char** argv)
         else if (a == "--verbose")
         {
             verbose = true;
+        }
+        else if (a == "--no-dump")
+        {
+            dumpOnError = false;
+        }
+        else if (a == "--dump")
+        {
+            dumpOnError = true;
+        }
+        else if (a == "--dump-context" && i + 1 < argc)
+        {
+            dumpContext = std::max(0, std::atoi(argv[++i]));
+        }
+        else if (a == "--emit-intermediate" && i + 1 < argc)
+        {
+            emitIntermediateDir = argv[++i];
+        }
+        else if (a == "--emit-always")
+        {
+            emitAlways = true;
         }
         else
         {
@@ -640,6 +674,12 @@ static int cmd_compile(int argc, char** argv)
     req.options.stage       = stage;
     req.options.includeDirs = std::move(includeDirs);
     req.options.defines     = std::move(defines);
+
+    // Diagnostics
+    req.options.dumpSourceOnError      = dumpOnError;
+    req.options.dumpContextLines       = dumpContext;
+    req.options.emitIntermediateDir    = emitIntermediateDir;
+    req.options.emitIntermediateAlways = emitAlways;
 
     // Language
     if (languageStr == "glsl")
@@ -904,6 +944,10 @@ static int cmd_build(int argc, char** argv)
     bool                     verbose         = false;
     std::string              materialModeStr = "bda";
     std::string              languageStr     = "auto";
+    bool                     dumpOnError     = true;
+    int                      dumpContext     = 5;
+    std::string              emitIntermediateDir;
+    bool                     emitAlways = false;
 
     for (int i = 2; i < argc; ++i)
     {
@@ -988,6 +1032,26 @@ static int cmd_build(int argc, char** argv)
         else if (a == "--verbose")
         {
             verbose = true;
+        }
+        else if (a == "--no-dump")
+        {
+            dumpOnError = false;
+        }
+        else if (a == "--dump")
+        {
+            dumpOnError = true;
+        }
+        else if (a == "--dump-context" && i + 1 < argc)
+        {
+            dumpContext = std::max(0, std::atoi(argv[++i]));
+        }
+        else if (a == "--emit-intermediate" && i + 1 < argc)
+        {
+            emitIntermediateDir = argv[++i];
+        }
+        else if (a == "--emit-always")
+        {
+            emitAlways = true;
         }
         else if (a == "-h" || a == "--help")
         {
@@ -1244,6 +1308,12 @@ static int cmd_build(int argc, char** argv)
             req.source.sourceText   = src;
             req.options.includeDirs = includeDirs;
             req.options.defines     = defines;
+
+            // Diagnostics
+            req.options.dumpSourceOnError      = dumpOnError;
+            req.options.dumpContextLines       = dumpContext;
+            req.options.emitIntermediateDir    = emitIntermediateDir;
+            req.options.emitIntermediateAlways = emitAlways;
 
             // Stage policy:
             // - If file name infers a stage, compile that single stage.

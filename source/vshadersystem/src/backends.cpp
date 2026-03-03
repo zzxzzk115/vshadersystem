@@ -132,186 +132,35 @@ namespace vshadersystem
     }
 
     // ============================================================
-    // GLSL material injection
-    // ============================================================
-
-    static std::string inject_glsl_material_access(const std::string& materialStructName, MaterialAccessMode mode)
-    {
-
-        switch (mode)
-        {
-
-            case MaterialAccessMode::eBDA:
-
-                return "#extension GL_EXT_buffer_reference2 : require\n"
-                       "#extension GL_EXT_scalar_block_layout : require\n"
-                       "#extension GL_EXT_shader_explicit_arithmetic_types_int64 : require\n"
-                       "\n"
-                       "layout(buffer_reference, scalar) readonly buffer vshader_MaterialRef\n"
-                       "{\n"
-                       "    " +
-                       materialStructName +
-                       " material;\n"
-                       "};\n"
-                       "\n" +
-                       materialStructName +
-                       " vshader_LoadMaterial(uint64_t addr)\n"
-                       "{\n"
-                       "    return vshader_MaterialRef(addr).material;\n"
-                       "}\n";
-
-            case MaterialAccessMode::eUBO:
-
-                return "layout(set = 0, binding = 0, std140) uniform vshader_MaterialUBO\n"
-                       "{\n"
-                       "    " +
-                       materialStructName +
-                       " material;\n"
-                       "} vshader_Material;\n"
-                       "\n" +
-                       materialStructName +
-                       " vshader_LoadMaterial()\n"
-                       "{\n"
-                       "    return vshader_Material.material;\n"
-                       "}\n";
-
-            case MaterialAccessMode::eSSBO:
-
-                return "layout(set = 0, binding = 0, std430) readonly buffer vshader_MaterialSSBO\n"
-                       "{\n"
-                       "    " +
-                       materialStructName +
-                       " materials[];\n"
-                       "} vshader_Materials;\n"
-                       "\n" +
-                       materialStructName +
-                       " vshader_LoadMaterial(uint index)\n"
-                       "{\n"
-                       "    return vshader_Materials.materials[index];\n"
-                       "}\n";
-
-            case MaterialAccessMode::ePushConstant:
-
-                return "layout(push_constant) uniform vshader_MaterialPC\n"
-                       "{\n"
-                       "    " +
-                       materialStructName +
-                       " material;\n"
-                       "} vshader_Material;\n"
-                       "\n" +
-                       materialStructName +
-                       " vshader_LoadMaterial()\n"
-                       "{\n"
-                       "    return vshader_Material.material;\n"
-                       "}\n";
-
-            default:
-
-                return {};
-        }
-    }
-
-    // ============================================================
-    // Slang material injection
-    // ============================================================
-
-    static std::string inject_slang_material_access(const std::string& materialStructName, MaterialAccessMode mode)
-    {
-
-        switch (mode)
-        {
-
-            case MaterialAccessMode::eBDA:
-
-                return "[[vk::buffer_reference, vk::buffer_reference_align(16)]]\n"
-                       "struct vshader_MaterialRef\n"
-                       "{\n"
-                       "    " +
-                       materialStructName +
-                       " material;\n"
-                       "};\n"
-                       "\n" +
-                       materialStructName +
-                       " vshader_LoadMaterial(uint64_t addr)\n"
-                       "{\n"
-                       "    return ((vshader_MaterialRef*)addr)->material;\n"
-                       "}\n";
-
-            case MaterialAccessMode::eUBO:
-
-                return "cbuffer vshader_MaterialUBO : register(b0)\n"
-                       "{\n"
-                       "    " +
-                       materialStructName +
-                       " vshader_material;\n"
-                       "};\n"
-                       "\n" +
-                       materialStructName +
-                       " vshader_LoadMaterial()\n"
-                       "{\n"
-                       "    return vshader_material;\n"
-                       "}\n";
-
-            case MaterialAccessMode::eSSBO:
-
-                return "StructuredBuffer<" + materialStructName +
-                       "> vshader_materials : register(t0);\n"
-                       "\n" +
-                       materialStructName +
-                       " vshader_LoadMaterial(uint index)\n"
-                       "{\n"
-                       "    return vshader_materials[index];\n"
-                       "}\n";
-
-            case MaterialAccessMode::ePushConstant:
-
-                return "[[vk::push_constant]]\n"
-                       "struct vshader_MaterialPC\n"
-                       "{\n"
-                       "    " +
-                       materialStructName +
-                       " material;\n"
-                       "};\n"
-                       "\n"
-                       "vshader_MaterialPC vshader_pc;\n"
-                       "\n" +
-                       materialStructName +
-                       " vshader_LoadMaterial()\n"
-                       "{\n"
-                       "    return vshader_pc.material;\n"
-                       "}\n";
-
-            default:
-
-                return {};
-        }
-    }
-
-    // ============================================================
     // Injector classes
     // ============================================================
 
     class GLSLMaterialInjector final : public IMaterialInjector
     {
     public:
-        std::string inject(const std::string& src, const std::string& structName, MaterialAccessMode mode) override
+        std::string inject(const std::string& src,
+                           const std::string& structName,
+                           MaterialAccessMode mode,
+                           const std::string& extraAfterMaterialAccess) override
         {
-
-            const std::string code = inject_glsl_material_access(structName, mode);
-
-            return inject_after_struct(src, structName, code);
+            (void)mode;
+            // v0.5+ (injection-only): resource layouts / material load functions must be provided
+            // by the caller (CompileOptions::materialInjection.preamble or other includes).
+            // This injector only splices the helper macros/functions after the Material struct.
+            return inject_after_struct(src, structName, extraAfterMaterialAccess);
         }
     };
 
     class SlangMaterialInjector final : public IMaterialInjector
     {
     public:
-        std::string inject(const std::string& src, const std::string& structName, MaterialAccessMode mode) override
+        std::string inject(const std::string& src,
+                           const std::string& structName,
+                           MaterialAccessMode mode,
+                           const std::string& extraAfterMaterialAccess) override
         {
-
-            const std::string code = inject_slang_material_access(structName, mode);
-
-            return inject_after_struct(src, structName, code);
+            (void)mode;
+            return inject_after_struct(src, structName, extraAfterMaterialAccess);
         }
     };
 

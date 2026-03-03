@@ -1,140 +1,79 @@
-#include "common.glsl"
+[vshader]
+language = glsl
+version = 460
 
-#pragma vultra language glsl
+[keywords]
+USE_SHADOW : bool permute
+QUALITY    : enum(low,medium,high) permute
 
-// Keywords
-#pragma keyword permute USE_SHADOW
-#pragma keyword special LIGHT_COUNT
+[properties]
+baseColorFactor : vec4 = (1,1,1,1)
+metallicFactor  : float = 0.0
+roughnessFactor : float = 0.5
+baseColorTex    : Texture2D
+normalTex       : Texture2D
 
-#pragma vultra entry vert VSMain
-#pragma vultra entry frag FSMain
-
-#pragma vultra material Material
-
-// Parameters
-#pragma vultra param baseColorFactor  semantic(BaseColor)  default(1,1,1,1)
-#pragma vultra param emissiveFactor  semantic(Emissive)  default(0,0,0,1)
-#pragma vultra param metallicFactor  semantic(Metallic)  default(0.0)
-#pragma vultra param roughnessFactor semantic(Roughness)  default(0.5)
-
-#pragma vultra param idxBaseColor    semantic(Custom) default(-1)
-#pragma vultra param uvScale         semantic(Custom) default(1,1)
-#pragma vultra param uvOffset        semantic(Custom) default(0,0)
-
-// Render state
-#pragma vultra state Blend One Zero // no blending
-#pragma vultra state BlendOp Add Add // just for test
-#pragma vultra state ZTest On
-#pragma vultra state CompareOp Less
-#pragma vultra state ZWrite On
-#pragma vultra state Cull Back
-#pragma vultra state AlphaToCoverage Off
-#pragma vultra state DepthBias 0.1 0.1 // just for test
-
-#extension GL_EXT_nonuniform_qualifier : require
-#extension GL_EXT_scalar_block_layout  : require
-
-struct Material
-{
-    vec4 baseColorFactor;
-    vec4 emissiveFactor;
-
-    float metallicFactor;
-    float roughnessFactor;
-
-    int idxBaseColor;
-
-    vec2 uvScale;
-    vec2 uvOffset;
-};
+[renderstate]
+cull = back
+depth_test = on
+depth_write = on
+depth_func = less
+blend = off
 
 
-#pragma vultra texture manyTextures semantic(Custom)
+[vertex]
+layout(location = 0) in vec3 inPos;
+layout(location = 1) in vec2 inUV;
 
-
-
-layout(set = 1, binding = 0)
-uniform sampler2D manyTextures[];
-
+layout(location = 0) out vec2 outUV;
 
 layout(push_constant)
 uniform Push
 {
     mat4 MVP;
-    uint64_t materialAddress;
 } pc;
 
-
-// ============================================================
-// Vertex Stage
-// ============================================================
-
-[vert]
-
-layout(location = 0)
-in vec3 inPos;
-
-layout(location = 1)
-in vec2 inUV;
-
-
-layout(location = 0)
-out vec2 outUV;
-
-void VSMain()
+void main()
 {
     gl_Position = pc.MVP * vec4(inPos, 1.0);
-
     outUV = inUV;
 }
 
 
+[fragment]
+#include "common.glsl"
 
-// ============================================================
-// Fragment Stage
-// ============================================================
+#extension GL_EXT_nonuniform_qualifier : require
+#extension GL_EXT_scalar_block_layout  : require
 
-[frag]
+layout(location = 0) in vec2 outUV;
+layout(location = 0) out vec4 outColor;
 
-layout(location = 0)
-in vec2 inUV;
-
-
-layout(location = 0)
-out vec4 outColor;
-
-
-
-vec2 getMaterialUV(Material mat)
+vec3 applyQuality(vec3 c)
 {
-    return inUV * mat.uvScale + mat.uvOffset;
+#if QUALITY == 0
+    return c * 0.5;
+#elif QUALITY == 1
+    return c;
+#else
+    return pow(c, vec3(1.2));
+#endif
 }
 
-
-void FSMain()
+void main()
 {
-    // GPU-driven material access
-    Material mat =
-        vshader_LoadMaterial(
-            pc.materialAddress);
-
-
-    vec2 uv =
-        getMaterialUV(mat);
-
+    // auto-injected by vshadersystem:
+    Material mat = VSH_MATERIAL();
 
     vec4 baseColor =
-        texture(
-            manyTextures[
-                nonuniformEXT(
-                    uint(mat.idxBaseColor)
-                )
-            ],
-            uv
-        )
-        *
-        mat.baseColorFactor;
+        VSH_SAMPLE2D(mat.baseColorTex_index, outUV)
+        * mat.baseColorFactor;
 
+#ifdef USE_SHADOW
+    baseColor.rgb *= 0.7;
+#endif
 
-    outColor = vec4(toGamma(baseColor.rgb), 1.0);
+    baseColor.rgb = applyQuality(baseColor.rgb);
+
+    outColor = vec4(baseColor.rgb, 1.0);
 }

@@ -20,298 +20,198 @@
         <img src="https://img.shields.io/github/license/zzxzzk115/vshadersystem"></a>
 </p>
 
+> ⚠ Since v0.5, the shader DSL no longer uses `#pragma`.
+> All metadata must be declared using structured INI-style sections.
+
 ## Overview
 
-**vshadersystem** compiles GLSL shaders into SPIR-V and extracts
+**vshadersystem** compiles structured multi-stage GLSL shaders into SPIR-V and extracts
 reflection and material metadata into a unified binary format.
 
-It supports both:
+Supported outputs:
 
 - Single shader binaries (`.vshbin`)
 - Shader libraries with variants (`.vshlib`)
 
-It is designed as a standalone shader pipeline library and can be
-integrated into:
+Designed for integration into:
 
 - Game engines
 - Rendering frameworks
 - Offline asset pipelines
-- Tools and editors
+- Editor tooling
 
 ## Features
 
+- Structured shader DSL (INI-style sections)
+- Multi-stage single-file shaders
 - GLSL → SPIR-V compilation (via glslang)
 - Reflection extraction (via spirv-cross)
-- Custom material semantic system (`#pragma`)
-- Production-grade shader binary format (`.vshbin`)
 - Deterministic hashing
-- Dependency tracking (`#include`)
-- Library-friendly API
-- Cross‑platform support
+- Permutation & runtime keyword system
+- Engine-agnostic material injection
+- Cross-platform support (Windows / Linux / macOS)
 
-## Pipeline
+## Shader DSL (v0.5+)
 
-    GLSL Shader
-         │
-         ▼
-    vshadersystem
-         │
-         ▼
-    .vshbin
-         │
-         ├── SPIR-V
-         ├── Reflection
-         ├── Material Description
-         └── Hash
+Shaders are written using structured sections.
 
-## Shader Example
+### Example
 
 ```glsl
-#version 460
+[vshader]
+language = glsl
+version  = 460
 
-#include "common.glsl"
+[keywords]
+USE_SHADOW : bool permute
+QUALITY    : enum(low,medium,high) permute
 
-// Keywords
-#pragma keyword permute global USE_SHADOW=1
-#pragma keyword permute pass PASS=GBUFFER|FORWARD
-#pragma keyword runtime material USE_CLEARCOAT=0
-#pragma keyword runtime global DEBUG_VIEW=NONE|NORMAL|ALBEDO
-#pragma keyword special USE_BINDLESS=1
+[properties]
+baseColorFactor : vec4 = (1,1,1,1)
+metallicFactor  : float = 0.0
+roughnessFactor : float = 0.5
+baseColorTex    : Texture2D
 
-// Material marker (required)
-#pragma vultra material
+[renderstate]
+cull        = back
+depth_test  = on
+depth_write = on
+blend       = off
 
-// Parameters
-#pragma vultra param baseColor semantic(BaseColor) default(1,1,1,1)
-#pragma vultra param metallic semantic(Metallic) default(0) range(0,1)
-#pragma vultra texture baseColorTex semantic(BaseColor)
+[vert]
+layout(location=0) in vec3 inPos;
+void main() { }
 
-// Render states
-#pragma vultra state Blend One Zero
-#pragma vultra state ZTest On
-#pragma vultra state ZWrite On
-#pragma vultra state Cull Back
-
-layout(set=0, binding=0) uniform Material
-{
-    vec4 baseColor;
-    float metallic;
-};
-
-layout(set=0, binding=1) uniform sampler2D baseColorTex;
-
+[frag]
 layout(location=0) out vec4 outColor;
-
-void main()
-{
-    // ...
-}
+void main() { }
 ```
 
-## Shader Keywords
+## Sections
 
-Keywords control shader variant generation and runtime behaviour.
+### [vshader]
 
-Keywords are declared using:
+Required.
 
-```
-#pragma keyword <dispatch> <name>
-```
+| Key      | Description              |
+| -------- | ------------------------ |
+| language | glsl                     |
+| version  | GLSL version (e.g., 460) |
 
-Where `<dispatch>` can be:
+### [keywords]
 
-### permute
-
-Compile‑time permutation keyword.
-
-Each value produces a separate shader variant and a unique `variantHash`.
-
-Example:
+Defines permutation or runtime keywords.
 
 ```
-#pragma keyword permute USE_SHADOW
+NAME : bool permute
+NAME : enum(a,b,c) permute
+NAME : bool runtime
+NAME : int special
 ```
 
-Cook manifest:
+Types:
+
+- permute → compile-time variants
+- runtime → no variant expansion
+- special → specialization constant
+
+### [properties]
+
+Defines material parameters.
+
+Supported types:
+
+- float
+- vec2 / vec3 / vec4
+- int
+- Texture2D
+- Texture2DArray
+
+Generates:
+
+- Material struct
+- Reflection metadata
+- Default values
+
+### [renderstate]
+
+Describes pipeline state configuration.
 
 ```
-variant = USE_SHADOW=0
-variant = USE_SHADOW=1
+cull = back
+depth_test = on
+depth_write = on
+blend = off
 ```
 
-### runtime
+### Stage Sections
 
-Runtime keyword.
-
-Does not generate additional variants.
-
-Example:
+Each shader stage is declared using a section:
 
 ```
-#pragma keyword runtime USE_FOG
+[vert] (or [vertex])
+[frag] (or [fragment])
+[comp] (or [compute])
+[mesh]
+[task]
+[rgen] (or [raygen])
+[rmiss] (or [miss],[raymiss])
+[rchit] (or [closesthit],[raychit])
+[rahit] (or [anyhit],[rayahit])
+[rint] (or [intersect],[rayint])
 ```
 
-### special
+`build_multiple_shaders()` automatically compiles all present stages.
 
-Specialization constant keyword.
+## Material Injection
 
-Example:
+vshadersystem does not assume a runtime binding model.
 
+Engines may inject descriptor bindings and material access logic:
+
+```cpp
+BuildRequest req;
+
+req.options.materialInjection = {
+    .preamble = "...",
+    .materialAddressExpr = "...",
+    .bindlessTextureArrayName = "...",
+    .macroPrefix = "VSH_"
+};
 ```
-#pragma keyword special LIGHT_COUNT
-```
 
-### global keywords (engine_keywords.vkw)
-
-Example:
-
-```
-USE_SHADOW=1
-LIGHT_COUNT=4
-```
-
-## Binary Format
-
-### .vshbin
-
-Header
-
-- magic
-- version
-- flags
-- hashes
-
-Chunks
-
-- SPRV → SPIR-V
-- REFL → reflection
-- MDES → material description
-
-### .vshlib
-
-Shader library containing:
-
-- Multiple shader variants
-- Fast runtime lookup table
-- Embedded engine keywords (optional)
+This allows BDA, SSBO, UBO, push constant, or custom GPU-driven architectures.
 
 ## CLI Usage
 
 ```
 Usage:
   vshaderc compile -i <input.vshader> -o <output.vshbin> -S <stage> [options]
-  vshaderc build --shader_root <dir> [--shader <path> ...] [-I <dir> ...] [--keywords-file <path.vkw>] -o <output.vshlib> [options]
-  vshaderc packlib -o <output.vshlib> [--keywords-file <path.vkw>] <in1.vshbin> <in2.vshbin> ...
-
-Stages:
-  vert, frag, comp, task, mesh, rgen, rmiss, rchit, rahit, rint
-
-Options (compile):
-  -I <dir>               Add include directory (repeatable)
-  -D <NAME=VALUE>        Define macro (repeatable; VALUE optional)
-  --keywords-file <vkw>  Load engine_keywords.vkw and inject global permute values if shader declares them
-  --no-cache             Disable cache
-  --cache <dir>          Cache directory (default: .vshader_cache)
-  --verbose              Verbose logging
-
-Options (build):
-  --shader_root <dir>    Root directory used for scanning shaders and computing stable shader ids
-  --shader <path>        Build only a specific shader (repeatable). Path is relative to --shader_root unless absolute.
-  -I <dir>               Add include directory (repeatable)
-  --keywords-file <vkw>  Load engine keywords (.vkw) and embed it into the output vshlib
-  --no-cache             Disable cache
-  --cache <dir>          Cache directory (default: .vshader_cache)
-  --skip-invalid          Skip variants failing only_if constraints
-  --verbose               Verbose logging
-
-Examples:
-  vshaderc compile -i shaders/pbr.frag.vshader -o out/pbr.frag.vshbin -S frag -I shaders/include -D USE_FOO=1
-  vshaderc build --shader_root examples/keywords/shaders --keywords-file examples/keywords/engine_keywords.vkw -o out/shaders.vshlib --verbose
-  vshaderc packlib -o out/shaders.vshlib --keywords-file engine_keywords.vkw out/*.vshbin
+  vshaderc build --shader_root <dir> -o <output.vshlib> [options]
+  vshaderc packlib -o <output.vshlib> <in1.vshbin> <in2.vshbin> ...
 ```
 
 ## Library Usage
 
-Compile shader:
-
-``` cpp
-#include <vshadersystem/compiler.hpp>
-
-using namespace vshadersystem;
-
-SourceInput input;
-
-input.sourceText = loadFile("shader.frag.vshader");
-input.virtualPath = "shader.frag.vshader";
-
-CompileOptions opt;
-opt.stage = ShaderStage::eFrag;
-
-// Keyword values are passed via defines
-opt.defines.push_back({"USE_SHADOW", "1"});
-
-auto result = compile_shader(input, opt);
-
-write_vshbin_file("shader.vshbin", result.value());
-```
-
-Build shader library (offline):
-
-```bash
-vshaderc build --shader_root <shader_root> --keywords-file <engine_keywords.vkw> -o <output.vshlib>
-```
-
-Load shader binary:
-
-``` cpp
-#include <vshadersystem/binary.hpp>
-
-auto lr = read_vshbin_file("shader.vshbin");
-if (!lr.isOk())
-{
-    // error..
-}
-
-const auto& shader = lr.value();
-```
-
-Load shader binary from a shader library:
+### Build Single Shader
 
 ```cpp
-auto lr = read_vshlib_file(libPath);
-if (!lr.isOk())
-{
-    // error..
-}
+BuildRequest req;
+req.source.sourceText  = loadFile("shader.vshader");
+req.source.virtualPath = "shader.vshader";
+req.options.stage      = ShaderStage::eFrag;
 
-const auto& lib = lr.value();
+auto r = build_single_shader(req);
+```
 
-// Example: shader id derived from path at build time (relative to --shader_root):
-// shaders/pbr.frag.vshader -> "pbr.frag"
-const std::string shaderId = "pbr.frag";
+### Build Multi-Stage Shader
 
-VariantKey key;
-key.setShaderId(shaderId);
-key.setStage(ShaderStage::eFrag);
+```cpp
+BuildRequest req;
+req.source.sourceText  = loadFile("shader.vshader");
+req.source.virtualPath = "shader.vshader";
 
-// Example permutation keyword set
-key.set("USE_SHADOW", 1);
-
-const uint64_t variantHash = key.build();
-
-auto blobR = extract_vshlib_blob(lib, variantHash, ShaderStage::eFrag);
-if (!blobR.isOk())
-{
-    // error..
-}
-
-auto br = read_vshbin(blobR.value());
-if (!br.isOk())
-{
-    // error..
-}
-
-const auto& bin = br.value();
+auto r = build_multiple_shaders(req);
 ```
 
 ## Build Instructions

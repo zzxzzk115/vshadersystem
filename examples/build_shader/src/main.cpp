@@ -8,6 +8,9 @@
 
 using namespace vshadersystem;
 
+#define SHADER_NAME "minimal.vshader"
+#define SHADER_DIR "shaders/"
+
 static std::string readFile(const char* path)
 {
     std::ifstream f(path, std::ios::binary);
@@ -204,10 +207,24 @@ static bool test_single(const std::string& src, ShaderStage stage)
 
     BuildRequest req;
 
-    req.source.virtualPath  = "minimal.vshader";
-    req.source.sourceText   = src;
-    req.options.includeDirs = {"shaders/include"};
-    req.options.stage       = stage;
+    req.source.virtualPath        = SHADER_NAME;
+    req.source.sourceText         = src;
+    req.options.includeDirs       = {"shaders/include"};
+    req.options.stage             = stage;
+    req.options.materialInjection = {
+        .preamble                 = R"(
+#extension GL_EXT_shader_explicit_arithmetic_types_int64 : require
+
+layout(set=0,binding=0,std430) readonly buffer DrawBuffer
+{
+    uint materialIndex;
+} g_Draws;
+layout(set=1,binding=0) uniform sampler2D uBindlessTextures[];
+)",
+        .materialIndexExpr        = "g_Draws.materialIndex",
+        .bindlessTextureArrayName = "uBindlessTextures",
+        .macroPrefix              = "VSH_",
+    };
 
     auto r = build_single_shader(req);
 
@@ -226,10 +243,24 @@ static bool test_multiple(const std::string& src)
 
     BuildRequest req;
 
-    req.source.virtualPath  = "minimal.vshader";
+    req.source.virtualPath  = SHADER_NAME;
     req.source.sourceText   = src;
     req.options.includeDirs = {"shaders/include"};
     // We don't set stage here, to test build_multiple_shaders' ability to detect stages from markers.
+    req.options.materialInjection = {
+        .preamble                 = R"(
+#extension GL_EXT_shader_explicit_arithmetic_types_int64 : require
+
+layout(set=0,binding=0,std430) readonly buffer DrawBuffer
+{
+    uint materialIndex;
+} g_Draws;
+layout(set=1,binding=0) uniform sampler2D uBindlessTextures[];
+)",
+        .materialIndexExpr        = "g_Draws.materialIndex",
+        .bindlessTextureArrayName = "uBindlessTextures",
+        .macroPrefix              = "VSH_",
+    };
 
     auto r = build_multiple_shaders(req);
 
@@ -252,7 +283,7 @@ static bool test_multiple(const std::string& src)
 
 int main()
 {
-    auto src = readFile("shaders/minimal.vshader");
+    auto src = readFile(SHADER_DIR SHADER_NAME);
 
     if (src.empty())
         return 1;

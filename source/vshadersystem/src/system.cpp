@@ -84,42 +84,98 @@ namespace vshadersystem
     }
 
     // ============================================================
-    // GLSL single-file stage filter
-    //  - keeps shared (before first marker)
-    //  - keeps only requested stage section
-    //  - drops other stage sections
-    //  - marker line can have trailing stuff -> starts_with
+    // INI-style shader stage extraction
+    //  - Keeps only code inside stage sections.
+    //  - Ignores non-code sections like [vshader]/[properties]/[renderstate]/[keywords].
+    //  - Optional shared section: [shared] or [common]
+    //
+    // Motivation:
+    //   INI blocks are not valid GLSL, so we must NOT forward them to the GLSL compiler.
     // ============================================================
 
-    static const char* stage_marker(ShaderStage s)
+    struct IniStageExtraction
     {
-        switch (s)
+        std::string shared;
+        std::string stage;
+    };
+
+    static bool ini_section_to_stage(std::string_view sectionLower, ShaderStage& out)
+    {
+        // accept both legacy and v0.5+ names
+        if (sectionLower == "vert" || sectionLower == "vertex")
         {
-            case ShaderStage::eVert:
-                return "[vert]";
-            case ShaderStage::eFrag:
-                return "[frag]";
-            case ShaderStage::eComp:
-                return "[comp]";
-            case ShaderStage::eTask:
-                return "[task]";
-            case ShaderStage::eMesh:
-                return "[mesh]";
-            default:
-                return nullptr;
+            out = ShaderStage::eVert;
+            return true;
         }
+        if (sectionLower == "frag" || sectionLower == "fragment")
+        {
+            out = ShaderStage::eFrag;
+            return true;
+        }
+        if (sectionLower == "comp" || sectionLower == "compute")
+        {
+            out = ShaderStage::eComp;
+            return true;
+        }
+        if (sectionLower == "task")
+        {
+            out = ShaderStage::eTask;
+            return true;
+        }
+        if (sectionLower == "mesh")
+        {
+            out = ShaderStage::eMesh;
+            return true;
+        }
+        if (sectionLower == "rgen" || sectionLower == "raygen")
+        {
+            out = ShaderStage::eRgen;
+            return true;
+        }
+        if (sectionLower == "rmiss" || sectionLower == "miss" || sectionLower == "raymiss")
+        {
+            out = ShaderStage::eRmiss;
+            return true;
+        }
+        if (sectionLower == "rchit" || sectionLower == "closesthit" || sectionLower == "raychit")
+        {
+            out = ShaderStage::eRmiss;
+            return true;
+        }
+        if (sectionLower == "rahit" || sectionLower == "anyhit" || sectionLower == "rayahit")
+        {
+            out = ShaderStage::eRahit;
+            return true;
+        }
+        if (sectionLower == "rint" || sectionLower == "intersect" || sectionLower == "rayint")
+        {
+            out = ShaderStage::eRint;
+            return true;
+        }
+        return false;
     }
 
-    static Result<std::string> filter_stage_source_glsl(const std::string& src, ShaderStage stage)
+    static inline std::string to_lower_copy(std::string_view sv)
     {
-        const char* want = stage_marker(stage);
-        if (!want)
-            return Result<std::string>::err({ErrorCode::eInvalidArgument, "Invalid stage marker"});
-
         std::string out;
+        out.resize(sv.size());
+        for (size_t i = 0; i < sv.size(); ++i)
+            out[i] = static_cast<char>(std::tolower(static_cast<unsigned char>(sv[i])));
+        return out;
+    }
 
-        bool inWanted  = false;
-        bool sawMarker = false;
+    static Result<IniStageExtraction> extract_ini_stage_source(const std::string& src, ShaderStage wantStage)
+    {
+        IniStageExtraction out;
+
+        enum class Target
+        {
+            eNone,
+            eShared,
+            eStage
+        };
+
+        Target curTarget = Target::eNone;
 
         size_t i = 0;
         while (i < src.size())
@@ -132,68 +188,142 @@ namespace vshadersystem
             else
                 lineEnd++;
 
-            const std::string_view line(src.data() + lineStart, lineEnd - lineStart);
-            const std::string_view t = trim(line);
+            std::string_view line(src.data() + lineStart, lineEnd - lineStart);
+            std::string_view t = trim(line);
 
-            const bool isMarker = t.starts_with("[vert]") || t.starts_with("[frag]") || t.starts_with("[comp]") ||
-                                  t.starts_with("[task]") || t.starts_with("[mesh]");
+            // tolerate BOM on first line
+            if (lineStart == 0 && !t.empty() && static_cast<unsigned char>(t.front()) == 0xEF)
+            {
+                constexpr std::string_view bom("\xEF\xBB\xBF", 3);
+                if (t.size() >= bom.size() && t.substr(0, bom.size()) == bom)
+                    t.remove_prefix(bom.size());
+                t = trim(t);
+            }
 
-            if (isMarker)
+            if (t.size() >= 3 && t.front() == '[' && t.back() == ']')
             {
-                sawMarker = true;
-                inWanted  = t.starts_with(want);
+                std::string secLower = to_lower_copy(t.substr(1, t.size() - 2));
+
+                if (secLower == "shared" || secLower == "common")
+                {
+                    curTarget = Target::eShared;
+                }
+                else
+                {
+                    ShaderStage secStage {};
+                    if (ini_section_to_stage(secLower, secStage))
+                    {
+                        curTarget = (secStage == wantStage) ? Target::eStage : Target::eNone;
+                    }
+                    else
+                    {
+                        curTarget = Target::eNone;
+                    }
+                }
+
+                i = lineEnd;
+                continue;
             }
-            else
-            {
-                if (!sawMarker || inWanted)
-                    out.append(line);
-            }
+
+            if (curTarget == Target::eShared)
+                out.shared.append(line);
+            else if (curTarget == Target::eStage)
+                out.stage.append(line);
 
             i = lineEnd;
         }
 
-        return Result<std::string>::ok(std::move(out));
+        if (out.stage.empty())
+        {
+            return Result<IniStageExtraction>::err(
+                {ErrorCode::eParseError, "INI-style shader: requested stage section is missing"});
+        }
+
+        return Result<IniStageExtraction>::ok(std::move(out));
     }
 
-    // ============================================================
-    // strip `#pragma vultra ...` lines before compiling GLSL
-    // ============================================================
-
-    static std::string strip_vultra_pragmas(const std::string& src)
+    // Split GLSL source into (directivePrefix, rest).
+    // directivePrefix includes leading empty lines and any lines starting with '#'
+    // (e.g. #version, #extension, #define) until the first non-directive line.
+    static inline void split_glsl_directive_prefix(const std::string& src, std::string& outPrefix, std::string& outRest)
     {
-        std::string out;
-        out.reserve(src.size());
+        outPrefix.clear();
+        outRest.clear();
 
+        size_t i      = 0;
+        bool   sawAny = false;
+
+        while (i < src.size())
+        {
+            const size_t lineStart = i;
+            size_t       lineEnd   = src.find('\n', i);
+            if (lineEnd == std::string::npos)
+                lineEnd = src.size();
+            else
+                lineEnd++;
+
+            std::string_view line(src.data() + lineStart, lineEnd - lineStart);
+            std::string_view t = trim(line);
+
+            if (!sawAny && t.empty())
+            {
+                outPrefix.append(line);
+                i = lineEnd;
+                continue;
+            }
+
+            sawAny = true;
+
+            if (!t.empty() && t.front() == '#')
+            {
+                outPrefix.append(line);
+                i = lineEnd;
+                continue;
+            }
+
+            // first non-directive
+            outRest.assign(src.begin() + static_cast<std::ptrdiff_t>(lineStart), src.end());
+            return;
+        }
+
+        // src contained only directives/whitespace
+        outRest.clear();
+    }
+
+    // Ensure GLSL has a leading #version directive.
+    // INI-style shaders typically specify version in [vshader] instead of writing #version per-stage.
+    static inline std::string ensure_glsl_version(std::string src, uint32_t version)
+    {
+        // Find first non-empty, non-//comment line.
         size_t i = 0;
         while (i < src.size())
         {
             size_t lineEnd = src.find('\n', i);
             if (lineEnd == std::string::npos)
                 lineEnd = src.size();
-            else
-                lineEnd++;
 
             std::string_view line(src.data() + i, lineEnd - i);
             std::string_view t = trim(line);
 
-            // tolerate BOM on first line
-            if (!t.empty() && static_cast<unsigned char>(t.front()) == 0xEF)
+            if (t.empty())
             {
-                constexpr std::string_view bom("\xEF\xBB\xBF", 3);
-
-                if (t.size() >= bom.size() && t.substr(0, bom.size()) == bom)
-                    t.remove_prefix(bom.size());
-
-                t = trim(t);
+                i = (lineEnd == src.size()) ? lineEnd : (lineEnd + 1);
+                continue;
             }
 
-            if (!t.starts_with("#pragma vultra"))
-                out.append(line);
+            if (t.size() >= 2 && t[0] == '/' && t[1] == '/')
+            {
+                i = (lineEnd == src.size()) ? lineEnd : (lineEnd + 1);
+                continue;
+            }
 
-            i = lineEnd;
+            if (t.rfind("#version", 0) == 0)
+                return src;
+
+            break;
         }
 
-        return out;
+        return "#version " + std::to_string(version) + "\n" + src;
     }
 
     // ============================================================
@@ -228,6 +358,22 @@ namespace vshadersystem
         // language affects backend + preprocessing
         h = xxhash64(&opt.language, sizeof(opt.language), h);
 
+        // material injection affects compilation (preamble + helper macros)
+        if (opt.materialInjection.has_value())
+        {
+            const auto& inj = opt.materialInjection.value();
+            h               = xxhash64(std::string("materialInjection=1"), h);
+            h               = xxhash64(inj.preamble, h);
+            h               = xxhash64(inj.materialAddressExpr, h);
+            h               = xxhash64(inj.materialIndexExpr, h);
+            h               = xxhash64(inj.bindlessTextureArrayName, h);
+            h               = xxhash64(inj.macroPrefix, h);
+        }
+        else
+        {
+            h = xxhash64(std::string("materialInjection=0"), h);
+        }
+
         auto defs = normalize_define_list(opt.defines);
         h         = xxhash64(defs, h);
 
@@ -244,6 +390,17 @@ namespace vshadersystem
 
             m += meta.hasMaterialDecl ? "material=1\n" : "material=0\n";
             m += "materialStruct=" + meta.materialStructName + "\n";
+
+            if (meta.isIniStyle)
+            {
+                // ini-style shaders may auto-generate code that affects compilation
+                m += "ini=1\n";
+                m += "preamble=" + meta.generatedPreamble + "\n";
+            }
+            else
+            {
+                m += "ini=0\n";
+            }
 
             m += "entryVert=" + meta.entryVert + "\n";
             m += "entryFrag=" + meta.entryFrag + "\n";
@@ -328,6 +485,92 @@ namespace vshadersystem
     }
 
     // ============================================================
+    // Material injection helpers (engine-agnostic contract)
+    // ============================================================
+
+    static Result<std::string> make_material_injection_helpers(const CompileOptions& opt, ShaderLanguage lang)
+    {
+        if (!opt.materialInjection.has_value())
+            return Result<std::string>::ok({});
+
+        const auto& inj    = opt.materialInjection.value();
+        std::string prefix = inj.macroPrefix.empty() ? "VSH_" : inj.macroPrefix;
+
+        // v0.5+ (injection-only):
+        //   - vshadersystem never declares descriptor layouts / push constants for material access.
+        //   - The caller provides resources + a matching vshader_LoadMaterial(...) overload via preamble/includes.
+        //   - We only generate convenience wrappers/macros based on the provided expressions.
+        std::string out;
+        out.reserve(1024);
+        out += "\n// vshadersystem material injection helpers\n";
+
+        const bool isGlsl  = (lang == ShaderLanguage::eGLSL);
+        const bool isSlang = (lang == ShaderLanguage::eSlang);
+
+        (void)isSlang;
+
+        // Optional: auto-generate a minimal, engine-agnostic LoadMaterial for BDA.
+        // This avoids any set/binding conventions and only relies on Vulkan GLSL buffer_reference.
+        if (opt.materialAccessMode == MaterialAccessMode::eBDA)
+        {
+            if (isGlsl)
+            {
+                out += "#extension GL_EXT_buffer_reference2 : require\n";
+                out += "#extension GL_EXT_scalar_block_layout : require\n";
+                out += "#extension GL_EXT_shader_explicit_arithmetic_types_int64 : require\n\n";
+                out +=
+                    "layout(buffer_reference, scalar) readonly buffer vshader_MaterialRef { Material material; };\n\n";
+                out +=
+                    "Material vshader_LoadMaterial(uint64_t addr) { return vshader_MaterialRef(addr).material; }\n\n";
+            }
+            else if (isSlang)
+            {
+                out += "[[vk::buffer_reference, vk::buffer_reference_align(16)]]\n";
+                out += "struct vshader_MaterialRef { Material material; };\n\n";
+                out += "Material vshader_LoadMaterial(uint64_t addr) { return ((vshader_MaterialRef*)addr)->material; "
+                       "}\n\n";
+            }
+        }
+
+        // Address/index accessors (choose what the caller provided)
+        if (!inj.materialAddressExpr.empty())
+        {
+            if (isGlsl)
+                out +=
+                    "uint64_t " + prefix + "MATERIAL_ADDRESS() { return uint64_t(" + inj.materialAddressExpr + "); }\n";
+            else
+                out += "uint64_t " + prefix + "MATERIAL_ADDRESS() { return (uint64_t)(" + inj.materialAddressExpr +
+                       "); }\n";
+
+            out += "#define " + prefix + "MATERIAL() vshader_LoadMaterial(" + prefix + "MATERIAL_ADDRESS())\n";
+        }
+        else if (!inj.materialIndexExpr.empty())
+        {
+            out += "uint " + prefix + "MATERIAL_INDEX() { return uint(" + inj.materialIndexExpr + "); }\n";
+            out += "#define " + prefix + "MATERIAL() vshader_LoadMaterial(" + prefix + "MATERIAL_INDEX())\n";
+        }
+        else
+        {
+            // Default:
+            //  - For BDA, the shader should call vshader_LoadMaterial(addr) directly.
+            //  - For other modes, expect a no-arg vshader_LoadMaterial() provided by the caller.
+            if (opt.materialAccessMode != MaterialAccessMode::eBDA)
+                out += "#define " + prefix + "MATERIAL() vshader_LoadMaterial()\n";
+        }
+
+        // Optional bindless sampling helpers
+        if (!inj.bindlessTextureArrayName.empty())
+        {
+            // Note: requires GL_EXT_nonuniform_qualifier in GLSL; caller should provide in preamble if needed.
+            out += "#define " + prefix + "TEX2D(idx) " + inj.bindlessTextureArrayName + "[nonuniformEXT(uint(idx))]\n";
+            out += "#define " + prefix + "SAMPLE2D(idx, uv) texture(" + prefix + "TEX2D(idx), (uv))\n";
+        }
+
+        out += "\n";
+        return Result<std::string>::ok(out);
+    }
+
+    // ============================================================
     // cache path
     // ============================================================
 
@@ -342,9 +585,9 @@ namespace vshadersystem
     // Material struct parser fallback (GLSL scalar block layout)
     //
     // Goal:
-    //  - When `#pragma vultra material <StructName>` is present but there is NO
-    //    reflected uniform/storage/push block to use, we parse the GLSL `struct`
-    //    and compute offsets/sizes ourselves (scalar layout).
+    //  - When a Material struct exists in shader source but there is NO reflected
+    //    uniform/storage/push block to use, parse the GLSL `struct` and compute
+    //    offsets/sizes (scalar layout).
     //
     // Supported:
     //  - scalar: int/uint/float/bool + explicit arithmetic types int8/16/64, float16
@@ -707,10 +950,8 @@ namespace vshadersystem
     //      * use block if exists (default "Material"), else allow empty
     // ============================================================
 
-    static Result<void> validate_and_build_mdesc(MaterialDescription&    mdesc,
-                                                 const ShaderReflection& refl,
-                                                 const ParsedMetadata&   meta,
-                                                 const std::string&      sourceText)
+    static Result<void>
+    validate_and_build_mdesc(MaterialDescription& mdesc, const ShaderReflection& refl, const ParsedMetadata& meta)
     {
         const std::string blockName = mdesc.materialBlockName;
 
@@ -734,12 +975,35 @@ namespace vshadersystem
             {
                 mdesc.materialParamSize = matBlock->size;
 
-                // Params: from reflected members
+                // INI v0.5: texture properties are stored as *_index members inside Material.
+                // Build params/textures from reflected Material block members.
                 mdesc.params.clear();
+                mdesc.textures.clear();
                 mdesc.params.reserve(matBlock->members.size());
+                mdesc.textures.reserve(matBlock->members.size());
 
                 for (const auto& mem : matBlock->members)
                 {
+                    // Texture index convention
+                    if (mem.name.ends_with("_index"))
+                    {
+                        std::string baseName = mem.name.substr(0, mem.name.size() - std::strlen("_index"));
+
+                        MaterialTextureDesc td;
+                        td.name    = baseName;
+                        td.type    = TextureType::eUnknown;
+                        td.set     = 0;
+                        td.binding = 0;
+                        td.count   = 1;
+
+                        const auto it = meta.textures.find(baseName);
+                        if (it != meta.textures.end())
+                            td.semantic = it->second.semantic;
+
+                        mdesc.textures.push_back(std::move(td));
+                        continue;
+                    }
+
                     MaterialParamDesc pd;
                     pd.name   = mem.name;
                     pd.offset = mem.offset;
@@ -768,72 +1032,16 @@ namespace vshadersystem
                     mdesc.params.push_back(std::move(pd));
                 }
 
-                // Textures: from descriptors (sampled image / combined)
-                mdesc.textures.clear();
-                for (const auto& d : refl.descriptors)
-                {
-                    const bool isTexture =
-                        (d.kind == DescriptorKind::eCombinedImageSampler) || (d.kind == DescriptorKind::eSampledImage);
-
-                    if (!isTexture)
-                        continue;
-
-                    MaterialTextureDesc td;
-                    td.name    = d.name;
-                    td.set     = d.set;
-                    td.binding = d.binding;
-                    td.count   = d.count;
-                    td.type    = TextureType::eUnknown;
-
-                    const auto it = meta.textures.find(d.name);
-                    if (it != meta.textures.end())
-                        td.semantic = it->second.semantic;
-
-                    mdesc.textures.push_back(std::move(td));
-                }
-
                 mdesc.renderState = meta.renderState;
-
-                // Strict validation: metadata params must exist in block
-                for (const auto& [name, _] : meta.params)
-                {
-                    bool found = false;
-
-                    for (const auto& mem : matBlock->members)
-                    {
-                        if (mem.name == name)
-                        {
-                            found = true;
-                            break;
-                        }
-                    }
-
-                    if (!found)
-                    {
-                        return Result<void>::err(
-                            {ErrorCode::eParseError,
-                             "Metadata param '" + name + "' not found in Material block members."});
-                    }
-                }
             }
             else
             {
-                // No block -> parse struct and compute scalar-layout offsets
-                if (meta.materialStructName.empty())
-                {
-                    // `#pragma vultra material` without name: we cannot parse a struct schema.
-                    // Treat as empty schema.
-                    mdesc.materialParamSize = 0;
-                    mdesc.params.clear();
-                    mdesc.textures.clear();
-                    mdesc.renderState = meta.renderState;
-                }
-                else
-                {
-                    auto r = build_mdesc_from_struct_scalar_layout(sourceText, meta.materialStructName, mdesc, meta);
-                    if (!r.isOk())
-                        return r;
-                }
+                // No reflected Material block for this stage (e.g. vertex shader not using Material).
+                // Keep an empty MaterialDescription for this stage.
+                mdesc.materialParamSize = 0;
+                mdesc.params.clear();
+                mdesc.textures.clear();
+                mdesc.renderState = meta.renderState;
             }
         }
         // ------------------------------------------------------------
@@ -884,27 +1092,6 @@ namespace vshadersystem
             }
 
             mdesc.renderState = meta.renderState;
-        }
-
-        // Strict validation: metadata textures must exist in reflected descriptors
-        for (const auto& [name, _] : meta.textures)
-        {
-            bool found = false;
-
-            for (const auto& d : refl.descriptors)
-            {
-                if (d.name == name)
-                {
-                    found = true;
-                    break;
-                }
-            }
-
-            if (!found)
-            {
-                return Result<void>::err(
-                    {ErrorCode::eParseError, "Metadata texture '" + name + "' not found in reflected descriptors."});
-            }
         }
 
         return Result<void>::ok();
@@ -968,25 +1155,59 @@ namespace vshadersystem
         SourceInput stageSrc = req.source;
 
         // ====================================================
-        // GLSL: stage filtering + strip tool pragmas + wrapper
-        // Slang: keep original source
+        // INI stage extraction
+        //   - v0.5.0 uses INI-style shaders exclusively.
+        //   - Extract the shared header + requested stage section.
         // ====================================================
 
-        if (lang == ShaderLanguage::eGLSL)
         {
-            auto filtered = filter_stage_source_glsl(req.source.sourceText, opt.stage);
+            auto ex = extract_ini_stage_source(req.source.sourceText, opt.stage);
+            if (!ex.isOk())
+                return Result<BuildResult>::err(ex.error());
 
-            if (!filtered.isOk())
-                return Result<BuildResult>::err(filtered.error());
+            // Assemble extracted stage source.
+            // v0.5+ INI shaders do NOT require authors to write #version per-stage.
+            // We always ensure a leading #version directive for GLSL.
+            std::string assembled = std::move(ex.value().shared);
+            if (!assembled.empty() && !assembled.ends_with("\n"))
+                assembled.push_back('\n');
+            assembled += std::move(ex.value().stage);
 
-            stageSrc.sourceText = std::move(filtered.value());
+            if (lang == ShaderLanguage::eGLSL)
+                assembled = ensure_glsl_version(std::move(assembled), meta.glslVersion);
 
-            // remove tool pragmas before compile
-            stageSrc.sourceText = strip_vultra_pragmas(stageSrc.sourceText);
-        }
-        else
-        {
-            stageSrc.sourceText = req.source.sourceText;
+            // Deterministic preamble placement:
+            //  - keep directive prefix (#version/#extension/#define...) at the top
+            //  - then inject: (user injection preamble) followed by (auto-generated preamble)
+            //  - then the rest of the stage code
+            std::string combinedPreamble;
+            if (opt.materialInjection.has_value() && !opt.materialInjection->preamble.empty())
+                combinedPreamble += opt.materialInjection->preamble;
+            if (!meta.generatedPreamble.empty())
+            {
+                if (!combinedPreamble.empty())
+                    combinedPreamble += "\n";
+                combinedPreamble += meta.generatedPreamble;
+            }
+
+            if (lang == ShaderLanguage::eGLSL && !combinedPreamble.empty())
+            {
+                std::string dir;
+                std::string rest;
+                split_glsl_directive_prefix(assembled, dir, rest);
+                stageSrc.sourceText = std::move(dir);
+                if (!stageSrc.sourceText.empty() && !stageSrc.sourceText.ends_with("\n"))
+                    stageSrc.sourceText.push_back('\n');
+                stageSrc.sourceText += combinedPreamble;
+                if (!stageSrc.sourceText.ends_with("\n"))
+                    stageSrc.sourceText.push_back('\n');
+                stageSrc.sourceText += std::move(rest);
+            }
+            else
+            {
+                // Slang or no preamble
+                stageSrc.sourceText = std::move(assembled);
+            }
         }
 
         // ====================================================
@@ -995,8 +1216,12 @@ namespace vshadersystem
 
         if (meta.hasMaterialDecl)
         {
-            stageSrc.sourceText =
-                backends.injector->inject(stageSrc.sourceText, meta.materialStructName, opt.materialAccessMode);
+            auto helperR = make_material_injection_helpers(opt, lang);
+            if (!helperR.isOk())
+                return Result<BuildResult>::err(helperR.error());
+
+            stageSrc.sourceText = backends.injector->inject(
+                stageSrc.sourceText, meta.materialStructName, opt.materialAccessMode, helperR.value());
         }
 
         // ====================================================
@@ -1102,7 +1327,7 @@ namespace vshadersystem
 
         // IMPORTANT: for struct-fallback parsing we must parse from the ORIGINAL file source,
         // not the filtered/stripped/injected per-stage text.
-        auto vr = validate_and_build_mdesc(mdesc, bin.reflection, meta, req.source.sourceText);
+        auto vr = validate_and_build_mdesc(mdesc, bin.reflection, meta);
 
         if (!vr.isOk())
             return Result<BuildResult>::err(vr.error());
@@ -1126,9 +1351,43 @@ namespace vshadersystem
         return Result<BuildResult>::ok(std::move(out));
     }
 
-    static bool stage_exists(std::string_view src, const char* marker)
+    static bool ini_has_stage_section(const std::string& src, ShaderStage wantStage)
     {
-        return src.find(marker) != std::string_view::npos;
+        size_t i = 0;
+        while (i < src.size())
+        {
+            const size_t lineStart = i;
+            size_t       lineEnd   = src.find('\n', i);
+            if (lineEnd == std::string::npos)
+                lineEnd = src.size();
+            else
+                lineEnd++;
+
+            std::string_view line(src.data() + lineStart, lineEnd - lineStart);
+            std::string_view t = trim(line);
+
+            // tolerate BOM on first line
+            if (lineStart == 0 && !t.empty() && static_cast<unsigned char>(t.front()) == 0xEF)
+            {
+                constexpr std::string_view bom("\xEF\xBB\xBF", 3);
+                if (t.size() >= bom.size() && t.substr(0, bom.size()) == bom)
+                    t.remove_prefix(bom.size());
+                t = trim(t);
+            }
+
+            if (t.size() >= 3 && t.front() == '[' && t.back() == ']')
+            {
+                std::string secLower = to_lower_copy(t.substr(1, t.size() - 2));
+
+                ShaderStage secStage {};
+                if (ini_section_to_stage(secLower, secStage) && secStage == wantStage)
+                    return true;
+            }
+
+            i = lineEnd;
+        }
+
+        return false;
     }
 
     // ============================================================
@@ -1141,45 +1400,37 @@ namespace vshadersystem
     {
         std::unordered_map<ShaderStage, BuildResult> out;
 
-        struct StageInfo
-        {
-            ShaderStage stage;
-            const char* marker;
-        };
-
-        const StageInfo stages[] = {
-            {ShaderStage::eVert, "[vert]"},
-            {ShaderStage::eFrag, "[frag]"},
-            {ShaderStage::eComp, "[comp]"},
-            {ShaderStage::eTask, "[task]"},
-            {ShaderStage::eMesh, "[mesh]"},
+        const ShaderStage stages[] = {
+            ShaderStage::eVert,
+            ShaderStage::eFrag,
+            ShaderStage::eComp,
+            ShaderStage::eTask,
+            ShaderStage::eMesh,
         };
 
         bool foundAny = false;
 
         for (const auto& s : stages)
         {
-            if (!stage_exists(req.source.sourceText, s.marker))
+            if (!ini_has_stage_section(req.source.sourceText, s))
                 continue;
 
             foundAny = true;
 
-            BuildRequest singleReq = req;
-
-            singleReq.options.stage = s.stage;
-
-            auto r = build_single_shader(singleReq);
+            BuildRequest singleReq  = req;
+            singleReq.options.stage = s;
+            auto r                  = build_single_shader(singleReq);
 
             if (!r.isOk())
                 return Result<std::unordered_map<ShaderStage, BuildResult>>::err(r.error());
 
-            out[s.stage] = std::move(r.value());
+            out[s] = std::move(r.value());
         }
 
         if (!foundAny)
         {
             return Result<std::unordered_map<ShaderStage, BuildResult>>::err(
-                {ErrorCode::eParseError, "No stage markers found"});
+                {ErrorCode::eParseError, "INI-style shader: no stage sections found"});
         }
 
         return Result<std::unordered_map<ShaderStage, BuildResult>>::ok(std::move(out));
@@ -1211,7 +1462,7 @@ namespace vshadersystem
 
         // When building from raw SPIR-V we cannot parse GLSL structs from text.
         // Keep block-based behavior only.
-        auto vr = validate_and_build_mdesc(mdesc, r.value(), emptyMeta, std::string());
+        auto vr = validate_and_build_mdesc(mdesc, r.value(), emptyMeta);
 
         if (!vr.isOk())
             return Result<ShaderBinary>::err(vr.error());
