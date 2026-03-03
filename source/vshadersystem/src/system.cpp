@@ -13,6 +13,7 @@
 #include <cctype>
 #include <cstdint>
 #include <cstdio>
+#include <cstring> // strlen
 #include <filesystem>
 #include <string>
 #include <string_view>
