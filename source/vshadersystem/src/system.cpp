@@ -505,10 +505,7 @@ namespace vshadersystem
         out.reserve(1024);
         out += "\n// vshadersystem material injection helpers\n";
 
-        const bool isGlsl  = (lang == ShaderLanguage::eGLSL);
-        const bool isSlang = (lang == ShaderLanguage::eSlang);
-
-        (void)isSlang;
+        const bool isGlsl = (lang == ShaderLanguage::eGLSL || lang == ShaderLanguage::eAuto);
 
         // Optional: auto-generate a minimal, engine-agnostic LoadMaterial for BDA.
         // This avoids any set/binding conventions and only relies on Vulkan GLSL buffer_reference.
@@ -523,13 +520,6 @@ namespace vshadersystem
                     "layout(buffer_reference, scalar) readonly buffer vshader_MaterialRef { Material material; };\n\n";
                 out +=
                     "Material vshader_LoadMaterial(uint64_t addr) { return vshader_MaterialRef(addr).material; }\n\n";
-            }
-            else if (isSlang)
-            {
-                out += "[[vk::buffer_reference, vk::buffer_reference_align(16)]]\n";
-                out += "struct vshader_MaterialRef { Material material; };\n\n";
-                out += "Material vshader_LoadMaterial(uint64_t addr) { return ((vshader_MaterialRef*)addr)->material; "
-                       "}\n\n";
             }
         }
 
@@ -1099,7 +1089,7 @@ namespace vshadersystem
     }
 
     // ============================================================
-    // build a single shader stage (GLSL or Slang)
+    // build a single shader stage
     // ============================================================
 
     Result<BuildResult> build_single_shader(const BuildRequest& req)
@@ -1118,14 +1108,14 @@ namespace vshadersystem
         if (lang == ShaderLanguage::eAuto)
             lang = meta.language;
 
-        // Per-stage entry (GLSL uses wrapper; Slang can ignore but keep consistent hashing)
+        if (lang == ShaderLanguage::eAuto)
+            lang = ShaderLanguage::eGLSL;
+
+        // Per-stage entry (GLSL uses a generated wrapper when needed)
         CompileOptions opt = req.options;
         opt.language       = lang;
 
-        if (lang == ShaderLanguage::eGLSL)
-            opt.entryPoint = entry_for_stage(meta, opt.stage);
-        else
-            opt.entryPoint.clear();
+        opt.entryPoint = entry_for_stage(meta, opt.stage);
 
         const uint64_t buildHash    = compute_build_hash(req.source, opt, meta);
         const uint64_t sourceHash   = xxhash64(req.source.sourceText);
@@ -1205,10 +1195,7 @@ namespace vshadersystem
                 stageSrc.sourceText += std::move(rest);
             }
             else
-            {
-                // Slang or no preamble
                 stageSrc.sourceText = std::move(assembled);
-            }
         }
 
         // ====================================================

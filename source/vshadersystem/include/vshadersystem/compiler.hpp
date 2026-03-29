@@ -21,7 +21,6 @@ namespace vshadersystem
 
         // Entry point function name.
         // - For GLSL, if not "main", vshadersystem will generate a wrapper main() calling entryPoint.
-        // - For Slang, this is passed as the entry point to the compiler.
         std::string entryPoint = "main";
 
         ShaderLanguage     language           = ShaderLanguage::eAuto;
@@ -116,5 +115,4 @@ namespace vshadersystem
     };
 
     Result<CompileOutput> compile_glsl_to_spirv(const SourceInput& input, const CompileOptions& opt);
-    Result<CompileOutput> compile_slang_to_spirv(const SourceInput& input, const CompileOptions& opt);
 } // namespace vshadersystem

@@ -682,10 +682,14 @@ static int cmd_compile(int argc, char** argv)
     req.options.emitIntermediateAlways = emitAlways;
 
     // Language
+    if (languageStr == "slang")
+    {
+        log_error("Slang is no longer supported in v0.6.0+. Please migrate to GLSL.");
+        return 1;
+    }
+
     if (languageStr == "glsl")
         req.options.language = ShaderLanguage::eGLSL;
-    else if (languageStr == "slang")
-        req.options.language = ShaderLanguage::eSlang;
     else
         req.options.language = ShaderLanguage::eAuto;
 
@@ -987,7 +991,7 @@ static int cmd_build(int argc, char** argv)
             {
                 if (i + 1 >= argc)
                 {
-                    log_error("--language requires auto|glsl|slang");
+                    log_error("--language requires auto|glsl");
                     return 1;
                 }
                 languageStr = argv[++i];
@@ -1321,10 +1325,14 @@ static int cmd_build(int argc, char** argv)
             req.options.stage = hasInferredStage ? inferredStage : ShaderStage::eUnknown;
 
             // Language
+            if (languageStr == "slang")
+            {
+                log_error("Slang is no longer supported in v0.6.0+. Please migrate to GLSL.");
+                return 5;
+            }
+
             if (languageStr == "glsl")
                 req.options.language = ShaderLanguage::eGLSL;
-            else if (languageStr == "slang")
-                req.options.language = ShaderLanguage::eSlang;
             else
                 req.options.language = ShaderLanguage::eAuto;
 

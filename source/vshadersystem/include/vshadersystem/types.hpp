@@ -47,8 +47,7 @@ namespace vshadersystem
     enum class ShaderLanguage : uint8_t
     {
         eAuto = 0,
-        eGLSL,
-        eSlang
+        eGLSL
     };
 
     // ------------------------------------------------------------

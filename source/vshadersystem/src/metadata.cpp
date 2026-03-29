@@ -624,7 +624,8 @@ namespace vshadersystem
                     if (val == "glsl")
                         out.language = ShaderLanguage::eGLSL;
                     else if (val == "slang")
-                        out.language = ShaderLanguage::eSlang;
+                        return Result<ParsedMetadata>::err(
+                            {ErrorCode::eParseError, "Slang is no longer supported. Please migrate this shader to GLSL."});
                     else
                         out.language = ShaderLanguage::eAuto;
                 }

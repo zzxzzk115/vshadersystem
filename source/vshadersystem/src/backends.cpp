@@ -21,15 +21,6 @@ namespace vshadersystem
         }
     };
 
-    class SlangCompilerBackend final : public ICompilerBackend
-    {
-    public:
-        Result<CompileOutput> compile(const SourceInput& input, const CompileOptions& opt) override
-        {
-            return compile_slang_to_spirv(input, opt);
-        }
-    };
-
     // ============================================================
     // Reflectors
     // ============================================================
@@ -43,21 +34,6 @@ namespace vshadersystem
             return reflect_spirv(spirv, opt);
         }
     };
-
-    class SlangReflectorBackend final : public IReflectorBackend
-    {
-    public:
-        Result<ShaderReflection>
-        reflect(const std::vector<uint32_t>& spirv, const ReflectionOptions& opt, const CompileOutput*) override
-        {
-            // unified path
-            return reflect_spirv(spirv, opt);
-        }
-    };
-
-    // ============================================================
-    // Injection helpers
-    // ============================================================
 
     static size_t find_struct_end(const std::string& src, const std::string& structName)
     {
@@ -151,23 +127,6 @@ namespace vshadersystem
         }
     };
 
-    class SlangMaterialInjector final : public IMaterialInjector
-    {
-    public:
-        std::string inject(const std::string& src,
-                           const std::string& structName,
-                           MaterialAccessMode mode,
-                           const std::string& extraAfterMaterialAccess) override
-        {
-            (void)mode;
-            return inject_after_struct(src, structName, extraAfterMaterialAccess);
-        }
-    };
-
-    // ============================================================
-    // Factory
-    // ============================================================
-
     BackendBundle create_backends(ShaderLanguage lang)
     {
 
@@ -175,17 +134,6 @@ namespace vshadersystem
 
         switch (lang)
         {
-
-            case ShaderLanguage::eSlang:
-
-                out.compiler = std::make_unique<SlangCompilerBackend>();
-
-                out.reflector = std::make_unique<SlangReflectorBackend>();
-
-                out.injector = std::make_unique<SlangMaterialInjector>();
-
-                break;
-
             case ShaderLanguage::eGLSL:
 
             case ShaderLanguage::eAuto:

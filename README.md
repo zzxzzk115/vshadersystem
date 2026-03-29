@@ -49,7 +49,10 @@ Designed for integration into:
 - Deterministic hashing
 - Permutation & runtime keyword system
 - Engine-agnostic material injection
-- Cross-platform support (Windows / Linux / macOS)
+- Cross-platform support (Windows / Linux / macOS / Android)
+
+> v0.6.0 currently targets GLSL-only shader authoring.
+> `slang` support has been removed until the upstream toolchain is stable on Android.
 
 ## Shader DSL (v0.5+)
 
@@ -230,6 +233,22 @@ Build:
 
     cd vshadersystem
     xmake -vD
+
+Build for Android:
+
+- Install Android NDK first.
+- If XMake cannot auto-detect your Android toolchain, pass the NDK path explicitly.
+
+Example:
+
+    cd vshadersystem
+    xmake f -p android --ndk=/path/to/android/sdk/ndk/<version>
+    xmake
+
+If your environment also requires an explicit SDK path, use:
+
+    xmake f -p android --sdk=/path/to/android/sdk --ndk=/path/to/android/sdk/ndk/<version>
+    xmake
 
 Run the example:
 
