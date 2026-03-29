@@ -237,6 +237,8 @@ Build:
 Build for Android:
 
 - Install Android NDK first.
+- Android currently builds the runtime library only (`vshadersystem`).
+- `vshaderc` and example targets are disabled on Android in v0.6.1.
 - If XMake cannot auto-detect your Android toolchain, pass the NDK path explicitly.
 
 Example:
