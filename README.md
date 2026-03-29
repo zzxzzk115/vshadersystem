@@ -13,6 +13,8 @@
         <img src="https://img.shields.io/github/actions/workflow/status/zzxzzk115/vshadersystem/build_linux.yaml?branch=master&label=Build-Linux&logo=github" /></a>
     <a href="https://github.com/zzxzzk115/vshadersystem/actions" alt="Build-macOS">
         <img src="https://img.shields.io/github/actions/workflow/status/zzxzzk115/vshadersystem/build_macos.yaml?branch=master&label=Build-macOS&logo=github" /></a>
+    <a href="https://github.com/zzxzzk115/vshadersystem/actions" alt="Build-Android">
+        <img src="https://img.shields.io/github/actions/workflow/status/zzxzzk115/vshadersystem/build_android.yaml?branch=master&label=Build-Android&logo=github" /></a>
     <a href="https://github.com/zzxzzk115/vshadersystem/issues" alt="GitHub Issues">
         <img src="https://img.shields.io/github/issues/zzxzzk115/vshadersystem"></a>
     <a href="https://www.codefactor.io/repository/github/zzxzzk115/vshadersystem"><img src="https://www.codefactor.io/repository/github/zzxzzk115/vshadersystem/badge" alt="CodeFactor" /></a>
@@ -247,12 +249,7 @@ Example:
     xmake f -p android --ndk=/path/to/android/sdk/ndk/<version>
     xmake
 
-If your environment also requires an explicit SDK path, use:
-
-    xmake f -p android --sdk=/path/to/android/sdk --ndk=/path/to/android/sdk/ndk/<version>
-    xmake
-
-Run the example:
+Run the example (for desktop):
 
     xmake run example_build_shader
     xmake run example_keywords
