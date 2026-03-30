@@ -4,6 +4,7 @@
 #include "vshadersystem/types.hpp"
 
 #include <cstdint>
+#include <span>
 #include <string>
 #include <vector>
 
@@ -75,6 +76,9 @@ namespace vshadersystem
 
     // Read the library file and return TOC + blob data.
     Result<ShaderLibrary> read_vshlib_file(const std::string& filePath);
+
+    // Read the library data from a contiguous memory span.
+    Result<ShaderLibrary> read_vshlib(std::span<const uint8_t> blob);
 
     // Find a shader blob by (keyHash, stage). Returns empty span if not found.
     Result<std::vector<uint8_t>> extract_vshlib_blob(const ShaderLibrary& lib, uint64_t keyHash, ShaderStage stage);

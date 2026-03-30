@@ -4,6 +4,8 @@
 #include <cstdint>
 #include <cstring>
 #include <fstream>
+#include <limits>
+#include <span>
 
 namespace vshadersystem
 {
@@ -40,14 +42,6 @@ namespace vshadersystem
         f.write(reinterpret_cast<const char*>(data), static_cast<std::streamsize>(size));
         if (!f)
             return Result<void>::err({ErrorCode::eIO, "Failed to write file."});
-        return Result<void>::ok();
-    }
-
-    static Result<void> read_all(std::ifstream& f, void* data, size_t size)
-    {
-        f.read(reinterpret_cast<char*>(data), static_cast<std::streamsize>(size));
-        if (!f)
-            return Result<void>::err({ErrorCode::eIO, "Failed to read file."});
         return Result<void>::ok();
     }
 
@@ -150,96 +144,111 @@ namespace vshadersystem
         return Result<void>::ok();
     }
 
-    Result<ShaderLibrary> read_vshlib_file(const std::string& filePath)
+    Result<ShaderLibrary> read_vshlib(std::span<const uint8_t> data)
     {
-        std::ifstream f(filePath, std::ios::binary);
-        if (!f)
-            return Result<ShaderLibrary>::err({ErrorCode::eIO, "Failed to open file: " + filePath});
+        if (data.size() < sizeof(FileHeader))
+            return Result<ShaderLibrary>::err({ErrorCode::eDeserializeError, "VSHLIB file too small."});
 
         FileHeader hdr {};
-        {
-            auto r = read_all(f, &hdr, sizeof(hdr));
-            if (!r.isOk())
-                return Result<ShaderLibrary>::err(r.error());
-        }
+        std::memcpy(&hdr, data.data(), sizeof(FileHeader));
 
         if (std::memcmp(hdr.magic, kMagic, sizeof(kMagic)) != 0)
             return Result<ShaderLibrary>::err({ErrorCode::eDeserializeError, "Invalid VSHLIB magic."});
         if (hdr.version != kVersion)
             return Result<ShaderLibrary>::err({ErrorCode::eDeserializeError, "Unsupported VSHLIB version."});
 
-        // Determine file size
-        f.seekg(0, std::ios::end);
-        const uint64_t fileSize = static_cast<uint64_t>(f.tellg());
-        f.seekg(0, std::ios::beg);
+        const uint64_t fileSize = static_cast<uint64_t>(data.size());
 
-        if (hdr.tocOffset + hdr.tocSize > fileSize)
+        if (hdr.tocOffset < sizeof(FileHeader) || (hdr.tocOffset + hdr.tocSize) > fileSize)
             return Result<ShaderLibrary>::err({ErrorCode::eDeserializeError, "VSHLIB TOC out of file range."});
 
+        const uint64_t expectedTocSize = static_cast<uint64_t>(sizeof(FileEntry)) * hdr.entryCount;
+        if (hdr.tocSize != expectedTocSize)
+            return Result<ShaderLibrary>::err({
+                ErrorCode::eDeserializeError,
+                "VSHLIB TOC size does not match entry count.",
+            });
+
+        const uint64_t tocEnd = hdr.tocOffset + hdr.tocSize;
         if (hdr.keywordsOffset != 0)
         {
-            if (hdr.keywordsOffset + hdr.keywordsSize > fileSize)
+            if ((hdr.keywordsOffset + hdr.keywordsSize) > fileSize)
                 return Result<ShaderLibrary>::err(
                     {ErrorCode::eDeserializeError, "VSHLIB keywords chunk out of file range."});
-            if (hdr.keywordsOffset < hdr.tocOffset + hdr.tocSize)
+            if (hdr.keywordsOffset < tocEnd)
                 return Result<ShaderLibrary>::err(
                     {ErrorCode::eDeserializeError, "VSHLIB keywords chunk overlaps TOC."});
         }
 
         const uint64_t blobBegin = sizeof(FileHeader);
         const uint64_t blobEnd   = hdr.tocOffset;
+        if (blobEnd < blobBegin)
+            return Result<ShaderLibrary>::err({ErrorCode::eDeserializeError, "VSHLIB blob region is invalid."});
 
         ShaderLibrary lib {};
         lib.blobData.resize(static_cast<size_t>(blobEnd - blobBegin));
-
-        // Read blob region
-        f.seekg(static_cast<std::streamoff>(blobBegin), std::ios::beg);
         if (!lib.blobData.empty())
         {
-            auto r = read_all(f, lib.blobData.data(), lib.blobData.size());
-            if (!r.isOk())
-                return Result<ShaderLibrary>::err(r.error());
+            std::memcpy(lib.blobData.data(), data.data() + blobBegin, lib.blobData.size());
         }
 
-        // Read TOC
-        std::vector<FileEntry> toc;
-        toc.resize(hdr.entryCount);
-
-        f.seekg(static_cast<std::streamoff>(hdr.tocOffset), std::ios::beg);
-        if (!toc.empty())
+        lib.entries.reserve(hdr.entryCount);
+        for (uint32_t idx = 0; idx < hdr.entryCount; ++idx)
         {
-            auto r = read_all(f, toc.data(), toc.size() * sizeof(FileEntry));
-            if (!r.isOk())
-                return Result<ShaderLibrary>::err(r.error());
-        }
+            const uint64_t entryOffset = hdr.tocOffset + static_cast<uint64_t>(idx) * sizeof(FileEntry);
+            if ((entryOffset + sizeof(FileEntry)) > fileSize)
+                return Result<ShaderLibrary>::err({ErrorCode::eDeserializeError, "VSHLIB TOC entry out of range."});
 
-        lib.entries.reserve(toc.size());
-        for (const auto& fe : toc)
-        {
+            FileEntry fe {};
+            std::memcpy(&fe, data.data() + entryOffset, sizeof(FileEntry));
+
             ShaderLibraryTOCEntry e {};
             e.keyHash = fe.keyHash;
             e.stage   = static_cast<ShaderStage>(fe.stage);
             e.offset  = fe.offset;
             e.size    = fe.size;
 
-            // Validate offsets relative to file
-            if (e.offset < blobBegin || (e.offset + e.size) > blobEnd)
+            if (e.offset < blobBegin || e.offset > blobEnd)
+                return Result<ShaderLibrary>::err({ErrorCode::eDeserializeError, "VSHLIB entry blob out of range."});
+            const uint64_t maxSize = blobEnd - e.offset;
+            if (e.size > maxSize)
                 return Result<ShaderLibrary>::err({ErrorCode::eDeserializeError, "VSHLIB entry blob out of range."});
 
             lib.entries.push_back(e);
         }
 
-        // Read optional engine keywords
         if (hdr.keywordsOffset != 0 && hdr.keywordsSize > 0)
         {
             lib.engineKeywordsVkw.resize(static_cast<size_t>(hdr.keywordsSize));
-            f.seekg(static_cast<std::streamoff>(hdr.keywordsOffset), std::ios::beg);
-            auto r = read_all(f, lib.engineKeywordsVkw.data(), lib.engineKeywordsVkw.size());
-            if (!r.isOk())
-                return Result<ShaderLibrary>::err(r.error());
+            std::memcpy(lib.engineKeywordsVkw.data(), data.data() + hdr.keywordsOffset, lib.engineKeywordsVkw.size());
         }
 
         return Result<ShaderLibrary>::ok(std::move(lib));
+    }
+
+    Result<ShaderLibrary> read_vshlib_file(const std::string& filePath)
+    {
+        std::ifstream f(filePath, std::ios::binary | std::ios::ate);
+        if (!f)
+            return Result<ShaderLibrary>::err({ErrorCode::eIO, "Failed to open file: " + filePath});
+
+        const std::streamsize streamSize = f.tellg();
+        if (streamSize < 0)
+            return Result<ShaderLibrary>::err({ErrorCode::eIO, "Failed to query file size: " + filePath});
+
+        if (static_cast<uint64_t>(streamSize) > static_cast<uint64_t>(std::numeric_limits<size_t>::max()))
+            return Result<ShaderLibrary>::err({ErrorCode::eIO, "VSHLIB file is too large."});
+
+        std::vector<uint8_t> data(static_cast<size_t>(streamSize));
+        f.seekg(0, std::ios::beg);
+        if (streamSize > 0)
+        {
+            f.read(reinterpret_cast<char*>(data.data()), streamSize);
+            if (!f)
+                return Result<ShaderLibrary>::err({ErrorCode::eIO, "Failed to read file: " + filePath});
+        }
+
+        return read_vshlib(std::span<const uint8_t>(data.data(), data.size()));
     }
 
     Result<std::vector<uint8_t>> extract_vshlib_blob(const ShaderLibrary& lib, uint64_t keyHash, ShaderStage stage)
