@@ -70,6 +70,9 @@ target("tint")
         if is_plat("windows") and nf:endswith("tmpfile_posix.cc") then
             goto continue
         end
+        if is_plat("windows") and nf:endswith("_posix.cc") then
+            goto continue
+        end
         if (not is_plat("windows")) and nf:endswith("_windows.cc") then
             goto continue
         end
