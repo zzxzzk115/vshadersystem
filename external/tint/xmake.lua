@@ -38,38 +38,56 @@ target("tint")
 
     local files = os.files("src/tint/**/*.cc")
     local kept = {}
+    local excluded_path_patterns = {
+        "/cmd/",
+        "/lang/hlsl/",
+        "/lang/msl/",
+        "/lang/glsl/",
+        "/lang/null/",
+        "/lang/spirv/writer/",
+        "/lang/wgsl/reader/",
+        "/lang/wgsl/inspector/",
+        "/lang/wgsl/ls/",
+        "/lang/wgsl/ast/transform/",
+        "/lang/core/ir/binary/",
+        "/utils/protos/"
+    }
+    local function match_any(haystack, patterns)
+        for _, p in ipairs(patterns) do
+            if haystack:find(p, 1, true) then
+                return true
+            end
+        end
+        return false
+    end
+
     for _, f in ipairs(files) do
-        if (not is_plat("windows")) and f:endswith("tmpfile_windows.cc") then
+        local nf = f:gsub("\\", "/")
+
+        if (not is_plat("windows")) and nf:endswith("tmpfile_windows.cc") then
             goto continue
         end
-        if is_plat("windows") and f:endswith("tmpfile_posix.cc") then
+        if is_plat("windows") and nf:endswith("tmpfile_posix.cc") then
             goto continue
         end
-        if (not is_plat("windows")) and f:endswith("_windows.cc") then
+        if (not is_plat("windows")) and nf:endswith("_windows.cc") then
             goto continue
         end
-        if (not is_plat("linux")) and f:endswith("_linux.cc") then
+        if (not is_plat("linux")) and nf:endswith("_linux.cc") then
             goto continue
         end
-        if (not is_plat("macosx")) and f:endswith("_mac.cc") then
+        if (not is_plat("macosx")) and nf:endswith("_mac.cc") then
             goto continue
         end
 
-        if not f:endswith("_test.cc")
-            and not f:endswith("_bench.cc")
-            and not f:endswith("_fuzz.cc")
-            and not f:find("/cmd/", 1, true)
-            and not f:find("/lang/hlsl/", 1, true)
-            and not f:find("/lang/msl/", 1, true)
-            and not f:find("/lang/glsl/", 1, true)
-            and not f:find("/lang/null/", 1, true)
-            and not f:find("/lang/spirv/writer/", 1, true)
-            and not f:find("/lang/wgsl/reader/", 1, true)
-            and not f:find("/lang/wgsl/ls/", 1, true)
-            and not f:find("/lang/wgsl/ast/transform/", 1, true)
-            and not f:find("/lang/core/ir/binary/", 1, true) then
-            table.insert(kept, f)
+        if nf:endswith("_test.cc")
+            or nf:endswith("_bench.cc")
+            or nf:endswith("_fuzz.cc")
+            or match_any(nf, excluded_path_patterns) then
+            goto continue
         end
+
+        table.insert(kept, f)
         ::continue::
     end
 
