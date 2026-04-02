@@ -30,7 +30,13 @@ target("tint")
     elseif is_plat("macosx") then
         add_defines("TINT_BUILD_IS_LINUX=0", "TINT_BUILD_IS_MAC=1", "TINT_BUILD_IS_WIN=0")
     elseif is_plat("windows") then
-        add_defines("TINT_BUILD_IS_LINUX=0", "TINT_BUILD_IS_MAC=0", "TINT_BUILD_IS_WIN=1")
+        add_defines(
+            "TINT_BUILD_IS_LINUX=0",
+            "TINT_BUILD_IS_MAC=0",
+            "TINT_BUILD_IS_WIN=1",
+            "NOMINMAX",
+            "WIN32_LEAN_AND_MEAN=1"
+        )
         add_cxxflags("/Zc:preprocessor", {tools = {"msvc", "cl"}})
     else
         add_defines("TINT_BUILD_IS_LINUX=0", "TINT_BUILD_IS_MAC=0", "TINT_BUILD_IS_WIN=0")
