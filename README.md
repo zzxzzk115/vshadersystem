@@ -33,7 +33,9 @@ reflection and material metadata into a unified binary format.
 Supported outputs:
 
 - Single shader binaries (`.vshbin`)
+- WebGPU single shader binaries (`.vshwebbin`)
 - Shader libraries with variants (`.vshlib`)
+- WebGPU shader libraries with variants (`.vshweblib`)
 
 Designed for integration into:
 
@@ -48,12 +50,13 @@ Designed for integration into:
 - Multi-stage single-file shaders
 - GLSL → SPIR-V compilation (via glslang)
 - Reflection extraction (via spirv-cross)
+- Optional SPIR-V -> WGSL conversion (via Tint)
 - Deterministic hashing
 - Permutation & runtime keyword system
 - Engine-agnostic material injection
 - Cross-platform support (Windows / Linux / macOS / Android)
 
-> v0.6.0 currently targets GLSL-only shader authoring.
+> v0.7.0 currently targets GLSL-only shader authoring.
 > `slang` support has been removed until the upstream toolchain is stable on Android.
 
 ## Shader DSL (v0.5+)
@@ -192,9 +195,66 @@ This allows BDA, SSBO, UBO, push constant, or custom GPU-driven architectures.
 ```
 Usage:
   vshaderc compile -i <input.vshader> -o <output.vshbin> -S <stage> [options]
+  vshaderc compile --webgpu -i <input.vshader> -o <output.vshwebbin> -S <stage> [options]
   vshaderc build --shader_root <dir> -o <output.vshlib> [options]
+  vshaderc build --webgpu --shader_root <dir> -o <output.vshweblib> [options]
   vshaderc packlib -o <output.vshlib> <in1.vshbin> <in2.vshbin> ...
+  vshaderc packlib --webgpu -o <output.vshweblib> <in1.vshwebbin> <in2.vshwebbin> ...
+  vshaderc wgsl -i <input.vshbin|input.vshwebbin|input.spv> -o <output.wgsl>
 ```
+
+## WGSL Workflow
+
+### Compile Single Shader for WebGPU
+
+```bash
+vshaderc compile --webgpu --material-mode ssbo \
+  -i shaders/pbr.frag.vshader \
+  -o out/pbr.frag.vshwebbin \
+  -S frag
+```
+
+Notes:
+
+- `--webgpu` forces `.vshwebbin` output.
+- `--material-mode=bda` is rejected in WebGPU mode.
+- Output binary embeds SPIR-V and WGSL text.
+
+### Build Variant Library for WebGPU
+
+```bash
+vshaderc build --webgpu --material-mode ssbo \
+  --shader_root shaders \
+  --keywords-file shaders/engine_keywords.vkw \
+  -o out/shaders.vshweblib
+```
+
+Notes:
+
+- Variant expansion still works the same as native build.
+- Each variant is validated through SPIR-V -> WGSL conversion.
+- Output is forced to `.vshweblib`.
+
+### Pack Prebuilt WebGPU Binaries
+
+```bash
+vshaderc packlib --webgpu \
+  -o out/shaders.vshweblib \
+  out/a.frag.vshwebbin out/b.vert.vshwebbin
+```
+
+Notes:
+
+- `packlib --webgpu` only accepts `.vshwebbin`.
+- Non-webgpu `packlib` rejects `.vshwebbin` to prevent mixing formats.
+
+### Extract / Inspect WGSL
+
+```bash
+vshaderc wgsl -i out/pbr.frag.vshwebbin -o out/pbr.frag.wgsl
+```
+
+Also supports `.vshbin` and raw `.spv` input.
 
 ## Library Usage
 
@@ -236,6 +296,8 @@ Build:
     cd vshadersystem
     xmake -vD
 
+Tint is built-in by default (used for SPIR-V -> WGSL conversion).
+
 Build for Android:
 
 - Install Android NDK first.
@@ -254,6 +316,7 @@ Run the example (for desktop):
     xmake run example_build_shader
     xmake run example_keywords
     xmake run example_runtime_load_library
+    xmake run example_webgpu
 
 ## License
 

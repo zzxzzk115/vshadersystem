@@ -16,12 +16,15 @@ out/
 # Log files
 *.log
 
-# CMake
-CMakeLists.txt
-
 # VS
 vs20*/
 vsxmake*/
 
 # clangd
 *.clangd
+
+# macOS
+.DS_Store
+
+# Python cache
+__pycache__/

@@ -2,7 +2,7 @@
 set_project("vshadersystem")
 
 -- set project version
-set_version("0.6.2")
+set_version("0.7.0")
 
 -- set language version: C++ 23
 set_languages("cxx23")
@@ -53,6 +53,9 @@ add_rules("clangd.config")
 
 -- add repositories
 add_repositories("my-xmake-repo https://github.com/zzxzzk115/xmake-repo.git backup")
+
+-- include external dependencies
+includes("external")
 
 -- include source
 includes("source")

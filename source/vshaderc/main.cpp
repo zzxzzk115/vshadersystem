@@ -6,6 +6,7 @@
 #include <vshadersystem/metadata.hpp>
 #include <vshadersystem/result.hpp>
 #include <vshadersystem/system.hpp>
+#include <vshadersystem/wgsl.hpp>
 
 #include <algorithm>
 #include <cctype>
@@ -49,8 +50,12 @@ static void print_usage()
 
 Usage:
   vshaderc compile -i <input.vshader> -o <output.vshbin> -S <stage> [options]
+  vshaderc compile --webgpu -i <input.vshader> -o <output.vshwebbin> -S <stage> [options]
   vshaderc build --shader_root <dir> [--shader <path> ...] [-I <dir> ...] [--keywords-file <path.vkw>] -o <output.vshlib> [options]
+  vshaderc build --webgpu --shader_root <dir> [--shader <path> ...] [-I <dir> ...] [--keywords-file <path.vkw>] -o <output.vshweblib> [options]
   vshaderc packlib -o <output.vshlib> [--keywords-file <path.vkw>] <in1.vshbin> <in2.vshbin> ...
+  vshaderc packlib --webgpu -o <output.vshweblib> [--keywords-file <path.vkw>] <in1.vshwebbin> <in2.vshwebbin> ...
+  vshaderc wgsl -i <input.vshbin|input.vshwebbin|input.spv> -o <output.wgsl>
 
 Stages:
   vert, frag, comp, task, mesh, rgen, rmiss, rchit, rahit, rint
@@ -58,6 +63,9 @@ Stages:
 Options (compile):
   -I <dir>               Add include directory (repeatable)
   -D <NAME=VALUE>        Define macro (repeatable; VALUE optional)
+  --material-mode <m>    Material access mode: bda|ubo|ssbo|push
+  --language <l>         Shader source language: auto|glsl
+  --webgpu               Enable WebGPU profile checks and force .vshwebbin output
   --keywords-file <vkw>  Load engine_keywords.vkw and inject global permute values if shader declares them
   --no-cache             Disable cache
   --cache <dir>          Cache directory (default: .vshader_cache)
@@ -72,6 +80,7 @@ Options (build):
   --shader_root <dir>    Root directory used for scanning shaders and computing stable shader ids
   --shader <path>        Build only a specific shader (repeatable). Path is relative to --shader_root unless absolute.
   -I <dir>               Add include directory (repeatable)
+  --webgpu               Enable WebGPU profile checks and require .vshweblib output
   --keywords-file <vkw>  Load engine keywords (.vkw) and embed it into the output vshlib
   --no-cache             Disable cache
   --cache <dir>          Cache directory (default: .vshader_cache)
@@ -84,7 +93,13 @@ Options (build):
   --verbose               Verbose logging
 
 Options (packlib):
+  --webgpu               Require .vshwebbin inputs and force .vshweblib output
   --keywords-file <vkw>  Embed keywords file bytes into output vshlib
+  --verbose              Verbose logging
+
+Options (wgsl):
+  -i <path>              Input .vshbin/.vshwebbin or raw SPIR-V binary (.spv)
+  -o <path>              Output .wgsl text file
   --verbose              Verbose logging
 
 Notes:
@@ -92,8 +107,11 @@ Notes:
 
 Examples:
   vshaderc compile -i shaders/pbr.frag.vshader -o out/pbr.frag.vshbin -S frag -I shaders/include -D USE_FOO=1
+  vshaderc compile --webgpu -i shaders/pbr.frag.vshader -o out/pbr.frag.vshwebbin -S frag -I shaders/include
   vshaderc build --shader_root examples/keywords/shaders --keywords-file examples/keywords/engine_keywords.vkw -o out/shaders.vshlib --verbose
   vshaderc packlib -o out/shaders.vshlib --keywords-file engine_keywords.vkw out/*.vshbin
+  vshaderc packlib --webgpu -o out/shaders.vshweblib out/*.vshwebbin
+  vshaderc wgsl -i out/pbr.frag.vshbin -o out/pbr.frag.wgsl
 )";
 }
 
@@ -143,6 +161,49 @@ static bool read_binary_file(const std::string& path, std::vector<uint8_t>& out)
     out.resize(size);
     f.read(reinterpret_cast<char*>(out.data()), static_cast<std::streamsize>(size));
     return static_cast<bool>(f);
+}
+
+static bool write_text_file(const std::string& path, const std::string& text)
+{
+    std::filesystem::path p(path);
+    if (!p.parent_path().empty())
+    {
+        std::error_code ec;
+        std::filesystem::create_directories(p.parent_path(), ec);
+        if (ec)
+            return false;
+    }
+
+    std::ofstream f(path, std::ios::binary);
+    if (!f)
+        return false;
+    f.write(text.data(), static_cast<std::streamsize>(text.size()));
+    return static_cast<bool>(f);
+}
+
+static Result<std::vector<uint32_t>> read_spirv_words_auto(const std::string& inPath)
+{
+    std::vector<uint8_t> bytes;
+    if (!read_binary_file(inPath, bytes))
+        return Result<std::vector<uint32_t>>::err({ErrorCode::eIO, "Failed to read input file: " + inPath});
+
+    if (inPath.ends_with(".vshbin") || inPath.ends_with(".vshwebbin"))
+    {
+        auto bin = read_vshbin(bytes);
+        if (!bin.isOk())
+            return Result<std::vector<uint32_t>>::err(bin.error());
+        return Result<std::vector<uint32_t>>::ok(std::move(bin.value().spirv));
+    }
+
+    if ((bytes.size() % 4) != 0)
+    {
+        return Result<std::vector<uint32_t>>::err(
+            {ErrorCode::eParseError, "Raw SPIR-V binary size is not 4-byte aligned."});
+    }
+
+    std::vector<uint32_t> words(bytes.size() / 4);
+    std::memcpy(words.data(), bytes.data(), bytes.size());
+    return Result<std::vector<uint32_t>>::ok(std::move(words));
 }
 
 static bool split_list(const std::string& s, std::vector<std::string>& out)
@@ -352,6 +413,7 @@ static int cmd_packlib(int argc, char** argv)
     std::string              outPath;
     std::string              keywordsPath;
     std::vector<std::string> inputs;
+    bool                     webgpu = false;
     bool                     verbose = false;
 
     for (int i = 2; i < argc; ++i)
@@ -381,6 +443,10 @@ static int cmd_packlib(int argc, char** argv)
         {
             verbose = true;
         }
+        else if (a == "--webgpu")
+        {
+            webgpu = true;
+        }
         else if (!a.empty() && a[0] == '-')
         {
             log_error("Unknown packlib arg: " + a);
@@ -398,6 +464,17 @@ static int cmd_packlib(int argc, char** argv)
     {
         log_error("packlib: output (-o) and at least one input .vshbin are required.");
         return 2;
+    }
+
+    if (webgpu)
+    {
+        if (!outPath.ends_with(".vshweblib"))
+        {
+            std::filesystem::path p(outPath);
+            p.replace_extension(".vshweblib");
+            log_info("packlib: --webgpu forcing output extension to .vshweblib: " + p.generic_string());
+            outPath = p.generic_string();
+        }
     }
 
     std::vector<uint8_t> keywordsBytes;
@@ -425,6 +502,23 @@ static int cmd_packlib(int argc, char** argv)
 
     for (const auto& path : inputs)
     {
+        if (webgpu)
+        {
+            if (!path.ends_with(".vshwebbin"))
+            {
+                log_error("packlib: --webgpu requires .vshwebbin inputs. Invalid: " + path);
+                return 4;
+            }
+        }
+        else
+        {
+            if (path.ends_with(".vshwebbin"))
+            {
+                log_error("packlib: .vshwebbin input requires --webgpu: " + path);
+                return 4;
+            }
+        }
+
         auto r = read_vshbin_file(path);
         if (!r.isOk())
         {
@@ -433,6 +527,12 @@ static int cmd_packlib(int argc, char** argv)
         }
 
         const auto&        bin = r.value();
+        if (webgpu && bin.wgsl.empty())
+        {
+            log_error("packlib: missing WGSL payload in webgpu input: " + path);
+            return 4;
+        }
+
         ShaderLibraryEntry e;
         e.keyHash = (bin.variantHash != 0) ? bin.variantHash : bin.contentHash;
         e.stage   = bin.stage;
@@ -482,6 +582,72 @@ static int cmd_packlib(int argc, char** argv)
 // Cook manifest structs
 // ============================================================
 
+static int cmd_wgsl(int argc, char** argv)
+{
+    std::string inPath;
+    std::string outPath;
+    bool        verbose = false;
+
+    for (int i = 2; i < argc; ++i)
+    {
+        std::string a = argv[i];
+        if (a == "-h" || a == "--help")
+        {
+            print_usage();
+            return 0;
+        }
+        if (a == "-i" && i + 1 < argc)
+        {
+            inPath = argv[++i];
+            continue;
+        }
+        if (a == "-o" && i + 1 < argc)
+        {
+            outPath = argv[++i];
+            continue;
+        }
+        if (a == "--verbose")
+        {
+            verbose = true;
+            continue;
+        }
+
+        log_error("Unknown wgsl argument: " + a);
+        return 2;
+    }
+
+    g_verbose = verbose;
+
+    if (inPath.empty() || outPath.empty())
+    {
+        log_error("wgsl: input (-i) and output (-o) are required.");
+        return 2;
+    }
+
+    auto spv = read_spirv_words_auto(inPath);
+    if (!spv.isOk())
+    {
+        log_error("wgsl: failed to load SPIR-V: " + spv.error().message);
+        return 3;
+    }
+
+    auto wgsl = spirv_to_wgsl(spv.value());
+    if (!wgsl.isOk())
+    {
+        log_error("wgsl: conversion failed: " + wgsl.error().message);
+        return 4;
+    }
+
+    if (!write_text_file(outPath, wgsl.value()))
+    {
+        log_error("wgsl: failed to write output: " + outPath);
+        return 5;
+    }
+
+    log_info("wgsl: wrote " + outPath);
+    return 0;
+}
+
 static int cmd_compile(int argc, char** argv)
 {
     // vshaderc compile -i <input> -o <out.vshbin> -S <stage> [options]
@@ -491,6 +657,7 @@ static int cmd_compile(int argc, char** argv)
     std::vector<std::string> includeDirs;
     std::vector<Define>      defines;
     std::string              keywordsFile;
+    bool                     webgpu          = false;
     bool                     enableCache     = true;
     std::string              cacheDir        = ".vshader_cache";
     bool                     verbose         = false;
@@ -562,6 +729,42 @@ static int cmd_compile(int argc, char** argv)
         {
             enableCache = false;
         }
+        else if ((a == "--material-mode" || a.rfind("--material-mode=", 0) == 0))
+        {
+            if (a == "--material-mode")
+            {
+                if (i + 1 >= argc)
+                {
+                    log_error("--material-mode requires bda|ubo|ssbo|push");
+                    return 2;
+                }
+                materialModeStr = argv[++i];
+            }
+            else
+            {
+                materialModeStr = a.substr(std::strlen("--material-mode="));
+            }
+        }
+        else if ((a == "--language" || a.rfind("--language=", 0) == 0))
+        {
+            if (a == "--language")
+            {
+                if (i + 1 >= argc)
+                {
+                    log_error("--language requires auto|glsl");
+                    return 2;
+                }
+                languageStr = argv[++i];
+            }
+            else
+            {
+                languageStr = a.substr(std::strlen("--language="));
+            }
+        }
+        else if (a == "--webgpu")
+        {
+            webgpu = true;
+        }
         else if (a == "--cache" && i + 1 < argc)
         {
             cacheDir = argv[++i];
@@ -611,6 +814,23 @@ static int cmd_compile(int argc, char** argv)
     {
         log_error("compile: input/output must be specified (-i/-o)");
         return 4;
+    }
+
+    if (webgpu)
+    {
+        if (materialModeStr == "bda")
+        {
+            log_error("compile: --webgpu does not support --material-mode=bda. Use ubo/ssbo/push.");
+            return 2;
+        }
+
+        if (!outPath.ends_with(".vshwebbin"))
+        {
+            std::filesystem::path p(outPath);
+            p.replace_extension(".vshwebbin");
+            log_info("compile: --webgpu forcing output extension to .vshwebbin: " + p.generic_string());
+            outPath = p.generic_string();
+        }
     }
 
     std::string src;
@@ -737,7 +957,19 @@ static int cmd_compile(int argc, char** argv)
             return 6;
         }
 
-        auto w = write_vshbin_file(outPath, r.value().binary);
+        ShaderBinary bin = r.value().binary;
+        if (webgpu)
+        {
+            auto wg = spirv_to_wgsl(bin.spirv);
+            if (!wg.isOk())
+            {
+                log_error("compile: webgpu conversion failed: " + wg.error().message);
+                return 6;
+            }
+            bin.wgsl = std::move(wg.value());
+        }
+
+        auto w = write_vshbin_file(outPath, bin);
 
         if (!w.isOk())
         {
@@ -809,9 +1041,21 @@ static int cmd_compile(int argc, char** argv)
                     ext = "unknown";
             }
 
-            auto outFile = base.string() + "." + ext + ".vshbin";
+            auto outFile = base.string() + "." + ext + (webgpu ? ".vshwebbin" : ".vshbin");
 
-            auto w = write_vshbin_file(outFile, result.binary);
+            ShaderBinary bin = result.binary;
+            if (webgpu)
+            {
+                auto wg = spirv_to_wgsl(bin.spirv);
+                if (!wg.isOk())
+                {
+                    log_error("compile: webgpu conversion failed for stage " + ext + ": " + wg.error().message);
+                    return 6;
+                }
+                bin.wgsl = std::move(wg.value());
+            }
+
+            auto w = write_vshbin_file(outFile, bin);
 
             if (!w.isOk())
             {
@@ -942,6 +1186,7 @@ static int cmd_build(int argc, char** argv)
     std::vector<std::string> includeDirs;
     std::string              keywordsPath;
     std::string              outLibPath;
+    bool                     webgpu         = false;
     bool                     enableCache     = true;
     std::string              cacheDir        = ".vshader_cache";
     bool                     skipInvalid     = false;
@@ -1021,6 +1266,10 @@ static int cmd_build(int argc, char** argv)
         {
             outLibPath = argv[++i];
         }
+        else if (a == "--webgpu")
+        {
+            webgpu = true;
+        }
         else if (a == "--no-cache")
         {
             enableCache = false;
@@ -1080,6 +1329,23 @@ static int cmd_build(int argc, char** argv)
     {
         log_error("build: -o <output.vshlib> is required");
         return 2;
+    }
+
+    if (webgpu)
+    {
+        if (materialModeStr == "bda")
+        {
+            log_error("build: --webgpu does not support --material-mode=bda. Use ubo/ssbo/push.");
+            return 2;
+        }
+
+        if (!outLibPath.ends_with(".vshweblib"))
+        {
+            std::filesystem::path p(outLibPath);
+            p.replace_extension(".vshweblib");
+            log_info("build: --webgpu forcing output extension to .vshweblib: " + p.generic_string());
+            outLibPath = p.generic_string();
+        }
     }
 
     std::filesystem::path shaderRootPath = std::filesystem::absolute(shaderRoot);
@@ -1371,7 +1637,18 @@ static int cmd_build(int argc, char** argv)
                     break;
                 }
 
-                const auto& bin = br.value().binary;
+                ShaderBinary bin = br.value().binary;
+
+                if (webgpu)
+                {
+                    auto wg = spirv_to_wgsl(bin.spirv);
+                    if (!wg.isOk())
+                    {
+                        firstError = "build: webgpu conversion failed for " + virtualPath + ": " + wg.error().message;
+                        break;
+                    }
+                    bin.wgsl = std::move(wg.value());
+                }
 
                 ShaderLibraryEntry e;
                 e.keyHash = (bin.variantHash != 0) ? bin.variantHash : bin.contentHash;
@@ -1417,7 +1694,19 @@ static int cmd_build(int argc, char** argv)
 
                 for (auto& [stage2, br2] : mr.value())
                 {
-                    const auto& bin = br2.binary;
+                    ShaderBinary bin = br2.binary;
+
+                    if (webgpu)
+                    {
+                        auto wg = spirv_to_wgsl(bin.spirv);
+                        if (!wg.isOk())
+                        {
+                            firstError =
+                                "build: webgpu conversion failed for " + virtualPath + ": " + wg.error().message;
+                            break;
+                        }
+                        bin.wgsl = std::move(wg.value());
+                    }
 
                     ShaderLibraryEntry e;
                     e.keyHash = (bin.variantHash != 0) ? bin.variantHash : bin.contentHash;
@@ -1534,6 +1823,9 @@ int main(int argc, char** argv)
 
     if (cmd == "packlib")
         return cmd_packlib(argc, argv);
+
+    if (cmd == "wgsl")
+        return cmd_wgsl(argc, argv);
 
     // Optional backward-compat: if user runs "vshaderc -i ...", treat as compile.
     // This keeps old scripts working.

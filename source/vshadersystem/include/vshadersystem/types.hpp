@@ -382,5 +382,6 @@ namespace vshadersystem
         MaterialDescription materialDesc;
 
         std::vector<uint32_t> spirv;
+        std::string           wgsl;
     };
 } // namespace vshadersystem

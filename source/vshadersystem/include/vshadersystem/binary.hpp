@@ -31,6 +31,7 @@ namespace vshadersystem
     // 'MDES' : material description
     // 'SIDH' : shader id hash (u64). Present in v2+.
     // 'VKEY' : variant key hash (u64). Present in v2+ when computed.
+    // 'WGSL' : WGSL source text (optional).
     //
     // Unknown chunks are skipped for forward compatibility.
     //

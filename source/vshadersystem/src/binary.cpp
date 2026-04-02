@@ -599,6 +599,15 @@ namespace vshadersystem
         // MDES
         write_chunk("MDES", serialize_mdesc(bin.materialDesc));
 
+        // WGSL (optional)
+        if (!bin.wgsl.empty())
+        {
+            std::vector<uint8_t> wgslPayload;
+            wgslPayload.resize(bin.wgsl.size());
+            std::memcpy(wgslPayload.data(), bin.wgsl.data(), wgslPayload.size());
+            write_chunk("WGSL", wgslPayload);
+        }
+
         return Result<std::vector<uint8_t>>::ok(std::move(out));
     }
 
@@ -730,6 +739,11 @@ namespace vshadersystem
                 out.materialDesc = std::move(mm.value());
 
                 hasMDES = true;
+            }
+            else if (tag == tag_u32("WGSL"))
+            {
+                out.wgsl.assign(reinterpret_cast<const char*>(payload),
+                                reinterpret_cast<const char*>(payload + size));
             }
             else
             {
