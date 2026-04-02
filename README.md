@@ -318,6 +318,35 @@ Run the example (for desktop):
     xmake run example_runtime_load_library
     xmake run example_webgpu
 
+## Prebuilt Releases
+
+To avoid long multi-platform compile times (especially with Tint), this repository provides
+an automated prebuilt packaging workflow.
+
+- Workflow: `.github/workflows/release_prebuilt.yaml`
+- Trigger:
+  - Publish a GitHub Release (recommended), or
+  - Run workflow manually with a tag (e.g. `v0.7.0`)
+- Output assets (attached to the release), one prebuilt bundle per platform/arch:
+  - `vshadersystem-prebuilt-<tag>-linux-x86.zip`
+  - `vshadersystem-prebuilt-<tag>-linux-x86_64.zip`
+  - `vshadersystem-prebuilt-<tag>-linux-arm64.zip`
+  - `vshadersystem-prebuilt-<tag>-windows-x64.zip`
+  - `vshadersystem-prebuilt-<tag>-windows-arm64.zip`
+  - `vshadersystem-prebuilt-<tag>-macosx-arm64.zip`
+  - `vshadersystem-prebuilt-<tag>-android-arm64-v8a.zip`
+  - `vshadersystem-prebuilt-<tag>-android-armeabi-v7a.zip`
+  - `vshadersystem-prebuilt-<tag>-android-x86_64.zip`
+
+Each bundle is produced by `xmake install` and may contain:
+
+- `include/`
+- `lib/`
+- `bin/` (if available on that platform; e.g. `vshaderc` on desktop)
+
+This makes downstream xmake-repo packages simple: select asset by `(plat, arch)`,
+download, unpack, then export `includedirs/linkdirs/links`.
+
 ## License
 
 This project is under the [MIT](./LICENSE) license.

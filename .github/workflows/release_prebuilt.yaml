@@ -1,0 +1,184 @@
+name: Release Prebuilt
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag (e.g. v0.7.0)"
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  build-prebuilt:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            plat: linux
+            arch: x86
+            artifact_suffix: linux-x86
+            android: false
+          - os: ubuntu-latest
+            plat: linux
+            arch: x86_64
+            artifact_suffix: linux-x86_64
+            android: false
+          - os: ubuntu-latest
+            plat: linux
+            arch: arm64
+            artifact_suffix: linux-arm64
+            android: false
+          - os: windows-latest
+            plat: windows
+            arch: x64
+            artifact_suffix: windows-x64
+            android: false
+          - os: windows-latest
+            plat: windows
+            arch: arm64
+            artifact_suffix: windows-arm64
+            android: false
+          - os: macos-latest
+            plat: macosx
+            arch: arm64
+            artifact_suffix: macosx-arm64
+            android: false
+          - os: ubuntu-latest
+            plat: android
+            arch: arm64-v8a
+            artifact_suffix: android-arm64-v8a
+            android: true
+          - os: ubuntu-latest
+            plat: android
+            arch: armeabi-v7a
+            artifact_suffix: android-armeabi-v7a
+            android: true
+          - os: ubuntu-latest
+            plat: android
+            arch: x86_64
+            artifact_suffix: android-x86_64
+            android: true
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - uses: xmake-io/github-action-setup-xmake@v1
+        with:
+          xmake-version: latest
+          actions-cache-folder: ".xmake-cache"
+          build-cache: true
+
+      - name: Install Linux Dependencies
+        if: ${{ !matrix.android && matrix.plat == 'linux' }}
+        run: sudo apt-get update && sudo apt-get install build-essential cmake git clang libx11-dev -y
+
+      - name: Setup Android SDK
+        if: matrix.android
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android Dependencies
+        if: matrix.android
+        run: sudo apt-get update && sudo apt-get install build-essential cmake git clang ninja-build -y
+
+      - name: Setup Linux Cross Toolchains
+        if: ${{ !matrix.android && matrix.plat == 'linux' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ "${{ matrix.arch }}" = "x86" ]; then
+            sudo apt-get install -y gcc-multilib g++-multilib libc6-dev-i386
+          elif [ "${{ matrix.arch }}" = "arm64" ]; then
+            sudo apt-get install -y gcc-aarch64-linux-gnu g++-aarch64-linux-gnu libc6-dev-arm64-cross
+          fi
+
+      - name: Install Android NDK
+        if: matrix.android
+        run: sdkmanager --sdk_root="${ANDROID_SDK_ROOT}" "ndk;30.0.14904198"
+
+      - name: Verify Android NDK Path
+        if: matrix.android
+        run: |
+          test -d "${ANDROID_SDK_ROOT}/ndk/30.0.14904198"
+          test -d "${ANDROID_SDK_ROOT}/ndk/30.0.14904198/toolchains/llvm/prebuilt/linux-x86_64/bin"
+          ls -la "${ANDROID_SDK_ROOT}/ndk/30.0.14904198/toolchains/llvm/prebuilt/linux-x86_64/bin"
+
+      - name: Configure (Windows x64 native)
+        if: ${{ !matrix.android && matrix.plat == 'windows' && matrix.arch == 'x64' }}
+        run: xmake f -m release --vshadersystem_build_examples=n --policies=build.ccache:y -y
+
+      - name: Configure (Linux x86_64 native)
+        if: ${{ !matrix.android && matrix.plat == 'linux' && matrix.arch == 'x86_64' }}
+        run: xmake f -m release --vshadersystem_build_examples=n --policies=build.ccache:y -y
+
+      - name: Configure (macOS arm64 native)
+        if: ${{ !matrix.android && matrix.plat == 'macosx' && matrix.arch == 'arm64' }}
+        run: xmake f -m release -p macosx --vshadersystem_build_examples=n --policies=build.ccache:y -y
+
+      - name: Configure (Android arm64-v8a native)
+        if: ${{ matrix.android && matrix.arch == 'arm64-v8a' }}
+        run: xmake f -m release -p android --ndk="${ANDROID_SDK_ROOT}/ndk/30.0.14904198" --vshadersystem_build_examples=n --policies=build.ccache:y -y
+
+      - name: Configure (Desktop)
+        if: ${{ !matrix.android && !(matrix.plat == 'windows' && matrix.arch == 'x64') && !(matrix.plat == 'linux' && matrix.arch == 'x86_64') && !(matrix.plat == 'macosx' && matrix.arch == 'arm64') }}
+        run: xmake f -m release -p ${{ matrix.plat }} -a ${{ matrix.arch }} --vshadersystem_build_examples=n --policies=build.ccache:y -y
+
+      - name: Configure (Android)
+        if: ${{ matrix.android && matrix.arch != 'arm64-v8a' }}
+        run: xmake f -m release -p android -a ${{ matrix.arch }} --ndk="${ANDROID_SDK_ROOT}/ndk/30.0.14904198" --vshadersystem_build_examples=n --policies=build.ccache:y -y
+
+      - name: Build (Desktop)
+        if: ${{ !matrix.android }}
+        run: xmake repo -u && xmake -vD -y
+
+      - name: Build (Android)
+        if: matrix.android
+        run: xmake repo -u && xmake -vD -y
+
+      - name: Install Bundle
+        run: xmake install -o prebuilt/install
+
+      - name: Package Bundle
+        shell: bash
+        run: |
+          set -euo pipefail
+          VERSION="${{ github.event.release.tag_name || inputs.tag }}"
+          STAGE="prebuilt/vshadersystem-prebuilt-${VERSION}-${{ matrix.artifact_suffix }}"
+          mkdir -p "${STAGE}"
+
+          cp -R prebuilt/install/* "${STAGE}/"
+          cp LICENSE "${STAGE}/LICENSE"
+          cp README.md "${STAGE}/README.md"
+
+          cmake -E tar cfv "prebuilt/vshadersystem-prebuilt-${VERSION}-${{ matrix.artifact_suffix }}.zip" --format=zip "${STAGE}"
+
+      - name: Upload Build Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: prebuilt-${{ matrix.artifact_suffix }}
+          path: prebuilt/*.zip
+
+  upload-release-assets:
+    needs: build-prebuilt
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Download All Zips
+        uses: actions/download-artifact@v4
+        with:
+          path: prebuilt_assets
+
+      - name: Publish Release Assets
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.event.release.tag_name || inputs.tag }}
+          files: prebuilt_assets/**/*.zip
