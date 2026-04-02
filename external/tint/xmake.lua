@@ -3,6 +3,7 @@ add_requires("abseil", {system = false})
 target("tint")
     set_kind("static")
     set_warnings("none")
+    set_languages("cxx20")
 
     add_deps("spirv-tools")
 
@@ -30,6 +31,7 @@ target("tint")
         add_defines("TINT_BUILD_IS_LINUX=0", "TINT_BUILD_IS_MAC=1", "TINT_BUILD_IS_WIN=0")
     elseif is_plat("windows") then
         add_defines("TINT_BUILD_IS_LINUX=0", "TINT_BUILD_IS_MAC=0", "TINT_BUILD_IS_WIN=1")
+        add_cxxflags("/Zc:preprocessor", {tools = {"msvc", "cl"}})
     else
         add_defines("TINT_BUILD_IS_LINUX=0", "TINT_BUILD_IS_MAC=0", "TINT_BUILD_IS_WIN=0")
     end
