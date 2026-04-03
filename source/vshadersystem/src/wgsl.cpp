@@ -2,17 +2,26 @@
 
 #include <tint/tint.h>
 
-#include <mutex>
-
 namespace vshadersystem
 {
+    namespace
+    {
+        inline void ensure_tint_initialized()
+        {
+            static const bool kTintInitialized = []() {
+                tint::Initialize();
+                return true;
+            }();
+            (void)kTintInitialized;
+        }
+    } // namespace
+
     Result<std::string> spirv_to_wgsl(const std::vector<uint32_t>& spirv)
     {
         if (spirv.empty())
             return Result<std::string>::err({ErrorCode::eInvalidArgument, "SPIR-V input is empty."});
 
-        static std::once_flag tintInitOnce;
-        std::call_once(tintInitOnce, []() { tint::Initialize(); });
+        ensure_tint_initialized();
 
         auto wgsl = tint::SpirvToWgsl(spirv);
         if (wgsl != tint::Success)

@@ -11,7 +11,6 @@
 #include <filesystem>
 #include <fstream>
 #include <iomanip>
-#include <mutex>
 #include <regex>
 #include <sstream>
 #include <string>
@@ -24,15 +23,13 @@ namespace vshadersystem
     // ------------------------------------------------------------
     // glslang initialization (process-wide)
     // ------------------------------------------------------------
-    static std::once_flag g_glslangInitOnce;
-
     static void ensure_glslang_initialized()
     {
-        std::call_once(g_glslangInitOnce, []() {
+        static const bool kGlslangInitialized = []() {
             glslang::InitializeProcess();
-            // We generally do not call glslang::FinalizeProcess() in library code.
-            // If finalize is needed, we can add a process shutdown hook in the host application.
-        });
+            return true;
+        }();
+        (void)kGlslangInitialized;
     }
 
     // ------------------------------------------------------------
@@ -554,9 +551,8 @@ namespace vshadersystem
 
         // Target environment (compile target only; no runtime Vulkan dependency).
         shader.setEnvInput(glslang::EShSourceGlsl, stage, glslang::EShClientVulkan, 100);
-        const auto targetVulkanEnv =
-            opt.webgpuProfile ? glslang::EShTargetVulkan_1_1 : glslang::EShTargetVulkan_1_2;
-        const auto targetSpvEnv = opt.webgpuProfile ? glslang::EShTargetSpv_1_3 : glslang::EShTargetSpv_1_5;
+        const auto targetVulkanEnv = opt.webgpuProfile ? glslang::EShTargetVulkan_1_1 : glslang::EShTargetVulkan_1_2;
+        const auto targetSpvEnv    = opt.webgpuProfile ? glslang::EShTargetSpv_1_3 : glslang::EShTargetSpv_1_5;
         shader.setEnvClient(glslang::EShClientVulkan, targetVulkanEnv);
         shader.setEnvTarget(glslang::EShTargetSpv, targetSpvEnv);
 

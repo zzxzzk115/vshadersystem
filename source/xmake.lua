@@ -1,6 +1,6 @@
 includes("vshadersystem")
 
--- Android builds only the runtime library for now.
-if not is_plat("android") then
+-- Android/WASM builds only the runtime library for now.
+if not is_plat("android", "wasm") then
     includes("vshaderc")
 end

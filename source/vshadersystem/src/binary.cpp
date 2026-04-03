@@ -2,18 +2,11 @@
 #include "vshadersystem/hash.hpp"
 #include "vshadersystem/types.hpp"
 
+#include <atomic>
 #include <cstdint>
 #include <cstring>
 #include <filesystem>
 #include <fstream>
-
-#if defined(_WIN32)
-#include <process.h>
-#define VSS_GETPID _getpid
-#else
-#include <unistd.h>
-#define VSS_GETPID getpid
-#endif
 
 namespace vshadersystem
 {
@@ -91,6 +84,12 @@ namespace vshadersystem
         uint32_t v;
         std::memcpy(&v, t, 4);
         return v;
+    }
+
+    static uint64_t next_temp_write_suffix()
+    {
+        static std::atomic<uint64_t> s_counter {0};
+        return ++s_counter;
     }
 
     // ------------------------------------------------------------
@@ -742,8 +741,7 @@ namespace vshadersystem
             }
             else if (tag == tag_u32("WGSL"))
             {
-                out.wgsl.assign(reinterpret_cast<const char*>(payload),
-                                reinterpret_cast<const char*>(payload + size));
+                out.wgsl.assign(reinterpret_cast<const char*>(payload), reinterpret_cast<const char*>(payload + size));
             }
             else
             {
@@ -786,7 +784,7 @@ namespace vshadersystem
 
         // Production-grade atomic write:
         // write to a temp file then rename.
-        const std::string tmpPath = path + ".tmp." + std::to_string(static_cast<uint64_t>(VSS_GETPID()));
+        const std::string tmpPath = path + ".tmp." + std::to_string(next_temp_write_suffix());
 
         {
             std::ofstream f(tmpPath, std::ios::binary);

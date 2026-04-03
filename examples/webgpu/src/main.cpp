@@ -1,10 +1,10 @@
 #include <vshadersystem/binary.hpp>
+#include <vshadersystem/log.hpp>
 #include <vshadersystem/system.hpp>
 #include <vshadersystem/wgsl.hpp>
 
 #include <algorithm>
 #include <cstdint>
-#include <iostream>
 #include <string>
 
 using namespace vshadersystem;
@@ -49,18 +49,21 @@ static const char* descriptor_kind_name(DescriptorKind kind)
 
 static void print_reflection(const ShaderBinary& bin)
 {
-    std::cout << "  descriptors: " << bin.reflection.descriptors.size() << "\n";
+    VSS_LOG_TAG_INFO("webgpu", "  descriptors: %zu", bin.reflection.descriptors.size());
     for (const auto& d : bin.reflection.descriptors)
     {
-        std::cout << "    - " << d.name << " (set=" << d.set << ", binding=" << d.binding << ", kind="
-                  << descriptor_kind_name(d.kind) << ")\n";
+        VSS_LOG_TAG_INFO("webgpu",
+                         "    - %s (set=%u, binding=%u, kind=%s)",
+                         d.name.c_str(),
+                         d.set,
+                         d.binding,
+                         descriptor_kind_name(d.kind));
     }
 
-    std::cout << "  blocks: " << bin.reflection.blocks.size() << "\n";
+    VSS_LOG_TAG_INFO("webgpu", "  blocks: %zu", bin.reflection.blocks.size());
     for (const auto& b : bin.reflection.blocks)
     {
-        std::cout << "    - " << b.name << " (set=" << b.set << ", binding=" << b.binding << ", size=" << b.size
-                  << ")\n";
+        VSS_LOG_TAG_INFO("webgpu", "    - %s (set=%u, binding=%u, size=%u)", b.name.c_str(), b.set, b.binding, b.size);
     }
 }
 
@@ -139,11 +142,11 @@ void main()
     auto built = build_multiple_shaders(req);
     if (!built.isOk())
     {
-        std::cerr << "[webgpu] compile failed: " << built.error().message << "\n";
+        VSS_LOG_TAG_ERROR("webgpu", "compile failed: %s", built.error().message.c_str());
         return 1;
     }
 
-    std::cout << "[webgpu] verification ok\n";
+    VSS_LOG_TAG_INFO("webgpu", "verification ok");
 
     for (const auto& [stage, result] : built.value())
     {
@@ -152,8 +155,8 @@ void main()
         auto wg = spirv_to_wgsl(bin.spirv);
         if (!wg.isOk())
         {
-            std::cerr << "[webgpu] SPIR-V -> WGSL failed (" << stage_name(stage) << "): " << wg.error().message
-                      << "\n";
+            VSS_LOG_TAG_ERROR(
+                "webgpu", "SPIR-V -> WGSL failed (%s): %s", stage_name(stage), wg.error().message.c_str());
             return 2;
         }
         bin.wgsl = std::move(wg.value());
@@ -161,36 +164,37 @@ void main()
         auto encoded = write_vshbin(bin);
         if (!encoded.isOk())
         {
-            std::cerr << "[webgpu] write_vshbin failed (" << stage_name(stage) << "): " << encoded.error().message
-                      << "\n";
+            VSS_LOG_TAG_ERROR(
+                "webgpu", "write_vshbin failed (%s): %s", stage_name(stage), encoded.error().message.c_str());
             return 3;
         }
 
         auto decoded = read_vshbin(encoded.value());
         if (!decoded.isOk())
         {
-            std::cerr << "[webgpu] read_vshbin failed (" << stage_name(stage) << "): " << decoded.error().message
-                      << "\n";
+            VSS_LOG_TAG_ERROR(
+                "webgpu", "read_vshbin failed (%s): %s", stage_name(stage), decoded.error().message.c_str());
             return 4;
         }
 
         const ShaderBinary& out = decoded.value();
         if (out.wgsl.empty())
         {
-            std::cerr << "[webgpu] invalid output (" << stage_name(stage) << "): WGSL is empty\n";
+            VSS_LOG_TAG_ERROR("webgpu", "invalid output (%s): WGSL is empty", stage_name(stage));
             return 5;
         }
 
-        std::cout << "\n[stage] " << stage_name(out.stage) << "\n";
-        std::cout << "  contentHash: " << out.contentHash << "\n";
-        std::cout << "  shaderIdHash:" << out.shaderIdHash << "\n";
-        std::cout << "  variantHash: " << out.variantHash << "\n";
-        std::cout << "  spirvWords:  " << out.spirv.size() << "\n";
-        std::cout << "  wgslBytes:   " << out.wgsl.size() << "\n";
+        VSS_LOG_TAG_INFO("webgpu", "[stage] %s", stage_name(out.stage));
+        VSS_LOG_TAG_INFO("webgpu", "  contentHash: %llu", static_cast<unsigned long long>(out.contentHash));
+        VSS_LOG_TAG_INFO("webgpu", "  shaderIdHash:%llu", static_cast<unsigned long long>(out.shaderIdHash));
+        VSS_LOG_TAG_INFO("webgpu", "  variantHash: %llu", static_cast<unsigned long long>(out.variantHash));
+        VSS_LOG_TAG_INFO("webgpu", "  spirvWords:  %zu", out.spirv.size());
+        VSS_LOG_TAG_INFO("webgpu", "  wgslBytes:   %zu", out.wgsl.size());
         print_reflection(out);
 
-        std::cout << "  wgsl_preview:\n";
-        std::cout << out.wgsl.substr(0, std::min<size_t>(out.wgsl.size(), 900)) << "\n";
+        VSS_LOG_TAG_INFO("webgpu", "  wgsl_preview:");
+        const std::string preview = out.wgsl.substr(0, std::min<size_t>(out.wgsl.size(), 900));
+        VSS_LOG_TAG_INFO("webgpu", "%s", preview.c_str());
     }
 
     return 0;

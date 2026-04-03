@@ -64,6 +64,11 @@ jobs:
             arch: x86_64
             artifact_suffix: android-x86_64
             android: true
+          - os: ubuntu-latest
+            plat: wasm
+            arch: wasm32
+            artifact_suffix: wasm-wasm32
+            android: false
 
     runs-on: ${{ matrix.os }}
 
@@ -86,9 +91,19 @@ jobs:
         if: matrix.android
         uses: android-actions/setup-android@v3
 
+      - name: Setup Emscripten SDK
+        if: ${{ matrix.plat == 'wasm' }}
+        uses: mymindstorm/setup-emsdk@v14
+        with:
+          version: latest
+
       - name: Install Android Dependencies
         if: matrix.android
         run: sudo apt-get update && sudo apt-get install build-essential cmake git clang ninja-build -y
+
+      - name: Install WASM Dependencies
+        if: ${{ matrix.plat == 'wasm' }}
+        run: sudo apt-get update && sudo apt-get install build-essential cmake git clang ninja-build python3 -y
 
       - name: Setup Linux Cross Toolchains
         if: ${{ !matrix.android && matrix.plat == 'linux' }}
@@ -129,19 +144,27 @@ jobs:
         run: xmake f -m release -p android --ndk="${ANDROID_SDK_ROOT}/ndk/30.0.14904198" --vshadersystem_build_examples=n --policies=build.ccache:y -y
 
       - name: Configure (Desktop)
-        if: ${{ !matrix.android && !(matrix.plat == 'windows' && matrix.arch == 'x64') && !(matrix.plat == 'linux' && matrix.arch == 'x86_64') && !(matrix.plat == 'macosx' && matrix.arch == 'arm64') }}
+        if: ${{ !matrix.android && matrix.plat != 'wasm' && !(matrix.plat == 'windows' && matrix.arch == 'x64') && !(matrix.plat == 'linux' && matrix.arch == 'x86_64') && !(matrix.plat == 'macosx' && matrix.arch == 'arm64') }}
         run: xmake f -m release -p ${{ matrix.plat }} -a ${{ matrix.arch }} --vshadersystem_build_examples=n --policies=build.ccache:y -y
 
       - name: Configure (Android)
         if: ${{ matrix.android && matrix.arch != 'arm64-v8a' }}
         run: xmake f -m release -p android -a ${{ matrix.arch }} --ndk="${ANDROID_SDK_ROOT}/ndk/30.0.14904198" --vshadersystem_build_examples=n --policies=build.ccache:y -y
 
+      - name: Configure (WASM)
+        if: ${{ matrix.plat == 'wasm' }}
+        run: xmake f -m release -p wasm -a wasm32 --vshadersystem_build_examples=n --policies=build.ccache:y -y
+
       - name: Build (Desktop)
-        if: ${{ !matrix.android }}
+        if: ${{ !matrix.android && matrix.plat != 'wasm' }}
         run: xmake repo -u && xmake -vD -y
 
       - name: Build (Android)
         if: matrix.android
+        run: xmake repo -u && xmake -vD -y
+
+      - name: Build (WASM)
+        if: ${{ matrix.plat == 'wasm' }}
         run: xmake repo -u && xmake -vD -y
 
       - name: Install Bundle

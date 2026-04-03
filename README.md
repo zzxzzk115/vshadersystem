@@ -320,6 +320,18 @@ Example:
     xmake f -p android --ndk=/path/to/android/sdk/ndk/<version>
     xmake
 
+Build for WASM:
+
+- WASM currently builds the runtime library only (`vshadersystem`).
+- `vshaderc` and example targets are disabled on WASM.
+- Install Emscripten SDK first.
+
+Example:
+
+    cd vshadersystem
+    xmake f -p wasm -a wasm32
+    xmake
+
 Run the example (for desktop):
 
     xmake run example_build_shader
@@ -346,12 +358,15 @@ an automated prebuilt packaging workflow.
   - `vshadersystem-prebuilt-<tag>-android-arm64-v8a.zip`
   - `vshadersystem-prebuilt-<tag>-android-armeabi-v7a.zip`
   - `vshadersystem-prebuilt-<tag>-android-x86_64.zip`
+  - `vshadersystem-prebuilt-<tag>-wasm-wasm32.zip`
 
 Each bundle is produced by `xmake install` and may contain:
 
 - `include/`
 - `lib/`
 - `bin/` (if available on that platform; e.g. `vshaderc` on desktop)
+
+Android/WASM bundles are runtime-only and typically do not include `bin/`.
 
 This makes downstream xmake-repo packages simple: select asset by `(plat, arch)`,
 download, unpack, then export `includedirs/linkdirs/links`.

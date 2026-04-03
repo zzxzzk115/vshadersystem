@@ -3,6 +3,7 @@
 #include <vshadersystem/hash.hpp>
 #include <vshadersystem/keyword_expr.hpp>
 #include <vshadersystem/library.hpp>
+#include <vshadersystem/log.hpp>
 #include <vshadersystem/metadata.hpp>
 #include <vshadersystem/result.hpp>
 #include <vshadersystem/system.hpp>
@@ -29,15 +30,15 @@ using namespace vshadersystem;
 
 static bool g_verbose = false;
 
-static void log_info(const std::string& s) { std::cout << "[vshaderc] " << s << std::endl; }
+static void log_info(const std::string& s) { VSS_LOG_TAG_INFO("vshaderc", "%s", s.c_str()); }
 
 static void log_verbose(const std::string& s)
 {
     if (g_verbose)
-        std::cout << "[vshaderc][verbose] " << s << std::endl;
+        VSS_LOG_TAG_DEBUG("vshaderc", "%s", s.c_str());
 }
 
-static void log_error(const std::string& s) { std::cerr << "[vshaderc][error] " << s << std::endl; }
+static void log_error(const std::string& s) { VSS_LOG_TAG_ERROR("vshaderc", "%s", s.c_str()); }
 
 // ============================================================
 // Usage
@@ -413,7 +414,7 @@ static int cmd_packlib(int argc, char** argv)
     std::string              outPath;
     std::string              keywordsPath;
     std::vector<std::string> inputs;
-    bool                     webgpu = false;
+    bool                     webgpu  = false;
     bool                     verbose = false;
 
     for (int i = 2; i < argc; ++i)
@@ -526,7 +527,7 @@ static int cmd_packlib(int argc, char** argv)
             return 4;
         }
 
-        const auto&        bin = r.value();
+        const auto& bin = r.value();
         if (webgpu && bin.wgsl.empty())
         {
             log_error("packlib: missing WGSL payload in webgpu input: " + path);
@@ -1187,7 +1188,7 @@ static int cmd_build(int argc, char** argv)
     std::vector<std::string> includeDirs;
     std::string              keywordsPath;
     std::string              outLibPath;
-    bool                     webgpu         = false;
+    bool                     webgpu          = false;
     bool                     enableCache     = true;
     std::string              cacheDir        = ".vshader_cache";
     bool                     skipInvalid     = false;
