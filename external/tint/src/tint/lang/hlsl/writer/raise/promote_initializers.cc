@@ -238,7 +238,8 @@ struct State {
 }  // namespace
 
 Result<SuccessType> PromoteInitializers(core::ir::Module& ir) {
-    core::ir::AssertValid(ir, kPromoteInitializersCapabilities, "before hlsl.PromoteInitializers");
+    TINT_CHECK_RESULT(core::ir::ValidateBeforeIfNeeded(ir, kPromoteInitializersCapabilities,
+                                                       "hlsl.PromoteInitializers"));
 
     State{ir}.Process();
 

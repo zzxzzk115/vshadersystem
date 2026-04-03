@@ -900,6 +900,7 @@ static int cmd_compile(int argc, char** argv)
     req.options.dumpContextLines       = dumpContext;
     req.options.emitIntermediateDir    = emitIntermediateDir;
     req.options.emitIntermediateAlways = emitAlways;
+    req.options.webgpuProfile          = webgpu;
 
     // Language
     if (languageStr == "slang")
@@ -1584,6 +1585,7 @@ static int cmd_build(int argc, char** argv)
             req.options.dumpContextLines       = dumpContext;
             req.options.emitIntermediateDir    = emitIntermediateDir;
             req.options.emitIntermediateAlways = emitAlways;
+            req.options.webgpuProfile          = webgpu;
 
             // Stage policy:
             // - If file name infers a stage, compile that single stage.

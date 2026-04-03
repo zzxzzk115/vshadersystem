@@ -554,8 +554,11 @@ namespace vshadersystem
 
         // Target environment (compile target only; no runtime Vulkan dependency).
         shader.setEnvInput(glslang::EShSourceGlsl, stage, glslang::EShClientVulkan, 100);
-        shader.setEnvClient(glslang::EShClientVulkan, glslang::EShTargetVulkan_1_2);
-        shader.setEnvTarget(glslang::EShTargetSpv, glslang::EShTargetSpv_1_5);
+        const auto targetVulkanEnv =
+            opt.webgpuProfile ? glslang::EShTargetVulkan_1_1 : glslang::EShTargetVulkan_1_2;
+        const auto targetSpvEnv = opt.webgpuProfile ? glslang::EShTargetSpv_1_3 : glslang::EShTargetSpv_1_5;
+        shader.setEnvClient(glslang::EShClientVulkan, targetVulkanEnv);
+        shader.setEnvTarget(glslang::EShTargetSpv, targetSpvEnv);
 
         // Preamble: include directives + defines.
         const std::string preamble = build_preamble(opt);

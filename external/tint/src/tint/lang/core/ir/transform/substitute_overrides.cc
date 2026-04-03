@@ -171,23 +171,9 @@ struct State {
             auto wgs = func->WorkgroupSize();
             TINT_IR_ASSERT(ir, wgs.has_value());
 
-            uint64_t total_size = 1;
-            constexpr uint64_t kMaxGridSize = 0xffffffff;
-
             std::array<ir::Value*, 3> new_wg{};
             for (size_t i = 0; i < 3; ++i) {
                 TINT_CHECK_RESULT_UNWRAP(new_value, CalculateOverride(wgs.value()[i]));
-
-                if (new_value->Value()->ValueAs<int64_t>() <= 0) {
-                    return diag::Failure("@workgroup_size values must be greater than 0");
-                }
-
-                total_size *= new_value->Value()->ValueAs<uint64_t>();
-                if (total_size > kMaxGridSize) {
-                    return diag::Failure("workgroup grid size cannot exceed " +
-                                         std::to_string(kMaxGridSize));
-                }
-
                 new_wg[i] = new_value;
             }
             func->SetWorkgroupSize(new_wg);
@@ -385,7 +371,8 @@ struct State {
 }  // namespace
 
 Result<SuccessType> SubstituteOverrides(Module& ir, const SubstituteOverridesConfig& cfg) {
-    AssertValid(ir, kSubstituteOverridesCapabilities, "before core.SubstituteOverrides");
+    TINT_CHECK_RESULT(
+        ValidateBeforeIfNeeded(ir, kSubstituteOverridesCapabilities, "core.SubstituteOverrides"));
     {
         auto result = State{ir, cfg}.Process();
         if (result != Success) {

@@ -64,8 +64,6 @@ class GlslWriterTestHelperBase : public BASE {
     Result<SuccessType> Generate(
         Options options = {},
         core::ir::Function::PipelineStage stage = core::ir::Function::PipelineStage::kCompute) {
-        mod.enable_validation_asserts = true;
-
         options.entry_point_name = "main";
         auto result = writer::Generate(mod, options);
         TINT_CHECK_RESULT(result);

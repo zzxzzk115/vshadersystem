@@ -358,6 +358,13 @@ namespace vshadersystem
 
         // language affects backend + preprocessing
         h = xxhash64(&opt.language, sizeof(opt.language), h);
+        // compile profile / target settings affect emitted SPIR-V
+        h = xxhash64(&opt.materialAccessMode, sizeof(opt.materialAccessMode), h);
+        h = xxhash64(&opt.spirvVersion, sizeof(opt.spirvVersion), h);
+        h = xxhash64(&opt.webgpuProfile, sizeof(opt.webgpuProfile), h);
+        h = xxhash64(&opt.optimize, sizeof(opt.optimize), h);
+        h = xxhash64(&opt.debugInfo, sizeof(opt.debugInfo), h);
+        h = xxhash64(&opt.stripDebugInfo, sizeof(opt.stripDebugInfo), h);
 
         // material injection affects compilation (preamble + helper macros)
         if (opt.materialInjection.has_value())

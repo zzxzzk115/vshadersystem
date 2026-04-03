@@ -56,7 +56,7 @@ Designed for integration into:
 - Engine-agnostic material injection
 - Cross-platform support (Windows / Linux / macOS / Android)
 
-> v0.7.0 currently targets GLSL-only shader authoring.
+> v0.7.1 currently targets GLSL-only shader authoring.
 > `slang` support has been removed until the upstream toolchain is stable on Android.
 
 ## Shader DSL (v0.5+)
@@ -218,6 +218,8 @@ Notes:
 
 - `--webgpu` forces `.vshwebbin` output.
 - `--material-mode=bda` is rejected in WebGPU mode.
+- WebGPU profile constrains compile target to Tint reader-compatible settings
+  (`Vulkan 1.1` + `SPIR-V 1.3`) to avoid validation mismatch.
 - Output binary embeds SPIR-V and WGSL text.
 
 ### Build Variant Library for WebGPU
@@ -267,6 +269,13 @@ req.source.virtualPath = "shader.vshader";
 req.options.stage      = ShaderStage::eFrag;
 
 auto r = build_single_shader(req);
+```
+
+If you compile for a WebGPU/Tint pipeline through the C++ API (without `vshaderc --webgpu`),
+enable the WebGPU profile explicitly:
+
+```cpp
+req.options.webgpuProfile = true;
 ```
 
 ### Build Multi-Stage Shader
@@ -326,7 +335,7 @@ an automated prebuilt packaging workflow.
 - Workflow: `.github/workflows/release_prebuilt.yaml`
 - Trigger:
   - Publish a GitHub Release (recommended), or
-  - Run workflow manually with a tag (e.g. `v0.7.0`)
+  - Run workflow manually with a tag (e.g. `v0.7.1`)
 - Output assets (attached to the release), one prebuilt bundle per platform/arch:
   - `vshadersystem-prebuilt-<tag>-linux-x86.zip`
   - `vshadersystem-prebuilt-<tag>-linux-x86_64.zip`

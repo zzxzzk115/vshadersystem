@@ -147,7 +147,8 @@ struct State {
 }  // namespace
 
 Result<SuccessType> CaseSwitchToIfElse(core::ir::Module& ir) {
-    core::ir::AssertValid(ir, kCaseSwitchToIfElseCapabilities, "before spirv.CaseSwitchToIfElse");
+    TINT_CHECK_RESULT(core::ir::ValidateBeforeIfNeeded(ir, kCaseSwitchToIfElseCapabilities,
+                                                       "spirv.CaseSwitchToIfElse"));
 
     State{ir}.Process();
 

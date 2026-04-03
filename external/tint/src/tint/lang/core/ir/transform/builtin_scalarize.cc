@@ -135,7 +135,8 @@ struct State {
 }  // namespace
 
 Result<SuccessType> BuiltinScalarize(Module& ir, const BuiltinScalarizeConfig& config) {
-    core::ir::AssertValid(ir, kBuiltinScalarizeCapabilities, "before core.BuiltinScalarize");
+    TINT_CHECK_RESULT(
+        ValidateBeforeIfNeeded(ir, kBuiltinScalarizeCapabilities, "core.BuiltinScalarize"));
 
     State{config, ir}.Process();
 

@@ -1344,15 +1344,15 @@ struct State {
 }  // namespace
 
 Result<SuccessType> BuiltinPolyfill(core::ir::Module& ir, const BuiltinPolyfillConfig& config) {
-    AssertValid(ir,
-                core::ir::Capabilities{
-                    core::ir::Capability::kAllow8BitIntegers,
-                    core::ir::Capability::kAllowPointSizeBuiltin,
-                    core::ir::Capability::kAllowAnyLetType,
-                    core::ir::Capability::kAllowNonCoreTypes,
-                    core::ir::Capability::kMslAllowEntryPointInterface,
-                },
-                "before msl.BuiltinPolyfill");
+    TINT_CHECK_RESULT(ValidateBeforeIfNeeded(ir,
+                                             core::ir::Capabilities{
+                                                 core::ir::Capability::kAllow8BitIntegers,
+                                                 core::ir::Capability::kAllowPointSizeBuiltin,
+                                                 core::ir::Capability::kAllowAnyLetType,
+                                                 core::ir::Capability::kAllowNonCoreTypes,
+                                                 core::ir::Capability::kMslAllowEntryPointInterface,
+                                             },
+                                             "msl.BuiltinPolyfill"));
 
     State{ir, config}.Process();
 

@@ -297,7 +297,7 @@ class Printer {
 
     /// Builds the SPIR-V from the IR
     Result<SuccessType> Generate() {
-        AssertValid(ir_, kPrinterCapabilities, "before spirv.Printer");
+        TINT_CHECK_RESULT(ValidateBeforeIfNeeded(ir_, kPrinterCapabilities, "spirv.Printer"));
 
         module_.PushCapability(SpvCapabilityShader);
 

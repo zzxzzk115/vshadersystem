@@ -100,12 +100,6 @@ struct State {
                             worklist.Push(builtin);
                         }
                         break;
-                    case core::BuiltinFn::kDistance:
-                        if (config.distance_scalar_f32 &&
-                            builtin->Args()[0]->Type()->Is<core::type::F32>()) {
-                            worklist.Push(builtin);
-                        }
-                        break;
                     case core::BuiltinFn::kSmoothstep:
                         worklist.Push(builtin);
                         break;
@@ -131,12 +125,6 @@ struct State {
                         break;
                     case core::BuiltinFn::kInsertBits:
                         if (config.insert_bits != BuiltinPolyfillLevel::kNone) {
-                            worklist.Push(builtin);
-                        }
-                        break;
-                    case core::BuiltinFn::kLength:
-                        if (config.length_scalar_f32 &&
-                            builtin->Args()[0]->Type()->Is<core::type::F32>()) {
                             worklist.Push(builtin);
                         }
                         break;
@@ -236,9 +224,6 @@ struct State {
                 case core::BuiltinFn::kDegrees:
                     Degrees(builtin);
                     break;
-                case core::BuiltinFn::kDistance:
-                    DistanceScalarF32(builtin);
-                    break;
                 case core::BuiltinFn::kSmoothstep:
                     SmoothStep(builtin);
                     break;
@@ -256,9 +241,6 @@ struct State {
                     break;
                 case core::BuiltinFn::kInsertBits:
                     InsertBits(builtin);
-                    break;
-                case core::BuiltinFn::kLength:
-                    LengthScalarF32(builtin);
                     break;
                 case core::BuiltinFn::kRadians:
                     Radians(builtin);
@@ -577,17 +559,6 @@ struct State {
         call->Destroy();
     }
 
-    /// Polyfill a `distance()` builtin call for scalar f32.
-    /// @param call the builtin call instruction
-    void DistanceScalarF32(ir::CoreBuiltinCall* call) {
-        // distance(x, y) -> abs(x - y)
-        b.InsertBefore(call, [&] {
-            auto* sub = b.Subtract(call->Args()[0], call->Args()[1]);
-            b.CallWithResult(call->DetachResult(), core::BuiltinFn::kAbs, sub);
-        });
-        call->Destroy();
-    }
-
     /// Polyfill an `smoothStep()` builtin call.
     /// @param call the builtin call instruction
     void SmoothStep(ir::CoreBuiltinCall* call) {
@@ -890,16 +861,6 @@ struct State {
             default:
                 TINT_IR_UNIMPLEMENTED(ir) << "insertBits polyfill level";
         }
-    }
-
-    /// Polyfill a `length()` builtin call for scalar f32.
-    /// @param call the builtin call instruction
-    void LengthScalarF32(ir::CoreBuiltinCall* call) {
-        // length(x) -> abs(x)
-        b.InsertBefore(call, [&] {
-            b.CallWithResult(call->DetachResult(), core::BuiltinFn::kAbs, call->Args()[0]);
-        });
-        call->Destroy();
     }
 
     /// Polyfill an `radians()` builtin call.
@@ -1282,7 +1243,8 @@ struct State {
 }  // namespace
 
 Result<SuccessType> BuiltinPolyfill(Module& ir, const BuiltinPolyfillConfig& config) {
-    core::ir::AssertValid(ir, kBuiltinPolyfillCapabilities, "before core.BuiltinPolyfill");
+    TINT_CHECK_RESULT(
+        ValidateBeforeIfNeeded(ir, kBuiltinPolyfillCapabilities, "core.BuiltinPolyfill"));
 
     State{config, ir}.Process();
 

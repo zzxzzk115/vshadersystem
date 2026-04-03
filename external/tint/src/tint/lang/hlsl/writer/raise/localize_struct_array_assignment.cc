@@ -157,8 +157,9 @@ struct State {
 }  // namespace
 
 Result<SuccessType> LocalizeStructArrayAssignment(core::ir::Module& ir) {
-    AssertValid(ir, core::ir::Capabilities{core::ir::Capability::kAllowDuplicateBindings},
-                "before hlsl.LocalizeStructArrayAssignment");
+    TINT_CHECK_RESULT(ValidateBeforeIfNeeded(
+        ir, core::ir::Capabilities{core::ir::Capability::kAllowDuplicateBindings},
+        "hlsl.LocalizeStructArrayAssignment"));
 
     State{ir}.Process();
 

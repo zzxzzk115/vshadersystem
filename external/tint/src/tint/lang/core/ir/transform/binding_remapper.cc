@@ -72,7 +72,8 @@ void Run(ir::Module& ir, const std::unordered_map<BindingPoint, BindingPoint>& b
 Result<SuccessType> BindingRemapper(
     Module& ir,
     const std::unordered_map<BindingPoint, BindingPoint>& binding_points) {
-    core::ir::AssertValid(ir, kBindingRemapperCapabilities, "before core.BindingRemapper");
+    TINT_CHECK_RESULT(
+        ValidateBeforeIfNeeded(ir, kBindingRemapperCapabilities, "core.BindingRemapper"));
 
     Run(ir, binding_points);
 

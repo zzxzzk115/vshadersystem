@@ -58,8 +58,6 @@ class HlslWriterTestHelperBase : public BASE {
     /// Run the writer on the IR module and validate the result.
     /// @returns true if generation and validation succeeded
     Result<SuccessType> Generate(Options options = {}) {
-        mod.enable_validation_asserts = true;
-
         if (options.entry_point_name.empty()) {
             options.entry_point_name = "main";
         }

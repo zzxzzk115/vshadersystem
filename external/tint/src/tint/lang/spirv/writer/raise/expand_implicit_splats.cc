@@ -135,7 +135,8 @@ struct State {
 }  // namespace
 
 Result<SuccessType> ExpandImplicitSplats(core::ir::Module& ir) {
-    AssertValid(ir, kExpandImplicitSplatsCapabilities, "before spirv.ExpandImplicitSplats");
+    TINT_CHECK_RESULT(ValidateBeforeIfNeeded(ir, kExpandImplicitSplatsCapabilities,
+                                             "spirv.ExpandImplicitSplats"));
 
     State{ir}.Process();
 

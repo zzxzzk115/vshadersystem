@@ -107,8 +107,6 @@ class SpirvWriterTestHelperBase : public BASE {
     /// storage class with OpConstantNull
     /// @returns success or a failure message
     tint::Result<SuccessType> Generate(Options options = {}) {
-        mod.enable_validation_asserts = true;
-
         if (options.entry_point_name.empty()) {
             options.entry_point_name = "main";
         }

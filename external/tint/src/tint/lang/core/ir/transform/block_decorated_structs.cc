@@ -118,8 +118,8 @@ void Run(Module& ir) {
 }  // namespace
 
 Result<SuccessType> BlockDecoratedStructs(Module& ir) {
-    core::ir::AssertValid(ir, kBlockDecoratedStructsCapabilities,
-                          "before core.BlockDecoratedStructs");
+    TINT_CHECK_RESULT(ValidateBeforeIfNeeded(ir, kBlockDecoratedStructsCapabilities,
+                                             "core.BlockDecoratedStructs"));
 
     Run(ir);
 

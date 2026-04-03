@@ -361,8 +361,8 @@ Result<ArrayLengthFromUniformResult> ArrayLengthFromUniform(
     Module& ir,
     BindingPoint ubo_binding,
     const std::unordered_map<BindingPoint, uint32_t>& bindpoint_to_size_index) {
-    core::ir::AssertValid(ir, kArrayLengthFromUniformCapabilities,
-                          "before core.ArrayLengthFromUniform");
+    TINT_CHECK_RESULT(ValidateBeforeIfNeeded(ir, kArrayLengthFromUniformCapabilities,
+                                             "core.ArrayLengthFromUniform"));
 
     State state{ir, ubo_binding, bindpoint_to_size_index};
     state.Process();

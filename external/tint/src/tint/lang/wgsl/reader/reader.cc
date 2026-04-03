@@ -56,12 +56,10 @@ Result<core::ir::Module> WgslToIR(const Source::File* file, const Options& optio
     return ProgramToLoweredIR(program);
 }
 
-Result<core::ir::Module> ProgramToLoweredIR(const Program& program, const IROptions& options) {
+Result<core::ir::Module> ProgramToLoweredIR(const Program& program,
+                                            InternalCompilerErrorCallback ice_callback) {
     TINT_CHECK_RESULT_UNWRAP(ir, ProgramToIR(program));
-    ir.ice_callback = options.ice_callback;
-    ir.dump_ir_when_validating = options.dump_ir_when_validating;
-    ir.enable_validation_asserts = options.enable_validation_asserts;
-
+    ir.ice_callback = ice_callback;
     bool atomic_vec2u_min_max = false;
     for (auto* enable : program.AST().Enables()) {
         if (enable->HasExtension(wgsl::Extension::kAtomicVec2UMinMax)) {

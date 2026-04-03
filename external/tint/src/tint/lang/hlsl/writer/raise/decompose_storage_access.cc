@@ -242,8 +242,9 @@ struct State {
             auto* original_value = b.Var(ty.ptr(function, type));
             original_value->SetInitializer(b.Zero(type));
 
-            b.MemberCall<hlsl::ir::MemberBuiltinCall>(ty.void_(), fn, var, OffsetToValue(offset),
-                                                      args[1], original_value);
+            b.MemberCall<hlsl::ir::MemberBuiltinCall>(
+                ty.void_(), fn, var, b.InsertConvertIfNeeded(type, OffsetToValue(offset)), args[1],
+                original_value);
             b.LoadWithResult(call->DetachResult(), original_value);
         });
         call->Destroy();
@@ -289,8 +290,9 @@ struct State {
             original_value->SetInitializer(b.Zero(type));
 
             auto* val = b.Subtract(b.Zero(type), args[1]);
-            b.MemberCall<hlsl::ir::MemberBuiltinCall>(ty.void_(), BuiltinFn::kInterlockedAdd, var,
-                                                      OffsetToValue(offset), val, original_value);
+            b.MemberCall<hlsl::ir::MemberBuiltinCall>(
+                ty.void_(), BuiltinFn::kInterlockedAdd, var,
+                b.InsertConvertIfNeeded(type, OffsetToValue(offset)), val, original_value);
             b.LoadWithResult(call->DetachResult(), original_value);
         });
         call->Destroy();
@@ -307,8 +309,8 @@ struct State {
 
             auto* cmp = args[1];
             b.MemberCall<hlsl::ir::MemberBuiltinCall>(
-                ty.void_(), BuiltinFn::kInterlockedCompareExchange, var, OffsetToValue(offset), cmp,
-                args[2], original_value);
+                ty.void_(), BuiltinFn::kInterlockedCompareExchange, var,
+                b.InsertConvertIfNeeded(type, OffsetToValue(offset)), cmp, args[2], original_value);
 
             auto* o = b.Load(original_value);
             b.ConstructWithResult(call->DetachResult(), o, b.Equal(o, cmp));
@@ -323,9 +325,9 @@ struct State {
             auto* original_value = b.Var(ty.ptr(function, type));
             original_value->SetInitializer(b.Zero(type));
 
-            b.MemberCall<hlsl::ir::MemberBuiltinCall>(ty.void_(), BuiltinFn::kInterlockedOr, var,
-                                                      OffsetToValue(offset), b.Zero(type),
-                                                      original_value);
+            b.MemberCall<hlsl::ir::MemberBuiltinCall>(
+                ty.void_(), BuiltinFn::kInterlockedOr, var,
+                b.InsertConvertIfNeeded(type, OffsetToValue(offset)), b.Zero(type), original_value);
             b.LoadWithResult(call->DetachResult(), original_value);
         });
         call->Destroy();
@@ -341,9 +343,9 @@ struct State {
             auto* original_value = b.Var(ty.ptr(function, type));
             original_value->SetInitializer(b.Zero(type));
 
-            b.MemberCall<hlsl::ir::MemberBuiltinCall>(ty.void_(), BuiltinFn::kInterlockedExchange,
-                                                      var, OffsetToValue(offset), args[1],
-                                                      original_value);
+            b.MemberCall<hlsl::ir::MemberBuiltinCall>(
+                ty.void_(), BuiltinFn::kInterlockedExchange, var,
+                b.InsertConvertIfNeeded(type, OffsetToValue(offset)), args[1], original_value);
         });
         call->Destroy();
     }
@@ -908,13 +910,14 @@ struct State {
 }  // namespace
 
 Result<SuccessType> DecomposeStorageAccess(core::ir::Module& ir) {
-    core::ir::AssertValid(ir,
-                          core::ir::Capabilities{
-                              core::ir::Capability::kAllow16BitIntegers,
-                              core::ir::Capability::kAllowClipDistancesOnF32ScalarAndVector,
-                              core::ir::Capability::kAllowDuplicateBindings,
-                          },
-                          "before hlsl.DecomposeStorageAccess");
+    TINT_CHECK_RESULT(core::ir::ValidateBeforeIfNeeded(
+        ir,
+        core::ir::Capabilities{
+            core::ir::Capability::kAllow16BitIntegers,
+            core::ir::Capability::kAllowClipDistancesOnF32ScalarAndVector,
+            core::ir::Capability::kAllowDuplicateBindings,
+        },
+        "hlsl.DecomposeStorageAccess"));
 
     State{ir}.Process();
 

@@ -249,7 +249,8 @@ struct State {
 }  // namespace
 
 Result<SuccessType> VarForDynamicIndex(core::ir::Module& ir) {
-    core::ir::AssertValid(ir, kVarForDynamicIndexCapabilities, "before spirv.VarForDynamicIndex");
+    TINT_CHECK_RESULT(core::ir::ValidateBeforeIfNeeded(ir, kVarForDynamicIndexCapabilities,
+                                                       "spirv.VarForDynamicIndex"));
 
     State{ir}.Process();
 

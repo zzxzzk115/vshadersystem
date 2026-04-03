@@ -2926,34 +2926,6 @@ type u64
 @must_use implicit(W: read_write, AS: workgroup_or_storage, N: num)
   fn bufferLength(ptr<AS, buffer<N>, W>) -> u32
 
-// The following variants do not appear in WGSL and contain an extra operand for capacity.
-@must_use implicit(R: read, AS: uniform_or_storage, O: iu32, C: iu32)
-  fn bufferView<T>(ptr<AS, unsized_buffer, R>, O, C) -> ptr<AS, T, R>
-@must_use implicit(R: read, AS: uniform_or_storage, O: iu32, N: num, C: iu32)
-  fn bufferView<T>(ptr<AS, buffer<N>, R>, O, C) -> ptr<AS, T, R>
-@must_use implicit(W: read_write, AS: workgroup_or_storage, O: iu32, C: iu32)
-  fn bufferView<T>(ptr<AS, unsized_buffer, W>, O, C) -> ptr<AS, T, W>
-@must_use implicit(W: read_write, AS: workgroup_or_storage, O: iu32, N: num, C: iu32)
-  fn bufferView<T>(ptr<AS, buffer<N>, W>, O, C) -> ptr<AS, T, W>
-
-@must_use implicit(R: read, AS: uniform_or_storage, O: iu32, S: iu32, C: iu32)
-  fn bufferArrayView<T>(ptr<AS, unsized_buffer, R>, O, S, C) -> ptr<AS, T, R>
-@must_use implicit(R: read, AS: uniform_or_storage, N: num, O: iu32, S: iu32, C: iu32)
-  fn bufferArrayView<T>(ptr<AS, buffer<N>, R>, O, S, C) -> ptr<AS, T, R>
-@must_use implicit(W: read_write, AS: workgroup_or_storage, O: iu32, S: iu32, C: iu32)
-  fn bufferArrayView<T>(ptr<AS, unsized_buffer, W>, O, S, C) -> ptr<AS, T, W>
-@must_use implicit(W: read_write, AS: workgroup_or_storage, N: num, O: iu32, S: iu32, C: iu32)
-  fn bufferArrayView<T>(ptr<AS, buffer<N>, W>, O, S, C) -> ptr<AS, T, W>
-
-@must_use implicit(R: read, AS: uniform_or_storage, C: iu32)
-  fn bufferLength(ptr<AS, unsized_buffer, R>, C) -> u32
-@must_use implicit(R: read, AS: uniform_or_storage, N: num, C: iu32)
-  fn bufferLength(ptr<AS, buffer<N>, R>, C) -> u32
-@must_use implicit(W: read_write, AS: workgroup_or_storage, C: iu32)
-  fn bufferLength(ptr<AS, unsized_buffer, W>, C) -> u32
-@must_use implicit(W: read_write, AS: workgroup_or_storage, N: num, C: iu32)
-  fn bufferLength(ptr<AS, buffer<N>, W>, C) -> u32
-
 // chromium_experimental_print
 implicit(T: scalar)
   fn print(T)

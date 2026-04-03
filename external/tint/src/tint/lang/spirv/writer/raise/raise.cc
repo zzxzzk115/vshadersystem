@@ -130,8 +130,6 @@ Result<SuccessType> Raise(core::ir::Module& module, const Options& options) {
     core_polyfills.pack_4xu8_clamp = true;
     core_polyfills.pack_unpack_4x8_norm = options.workarounds.polyfill_pack_unpack_4x8_norm;
     core_polyfills.abs_signed_int = true;
-    core_polyfills.length_scalar_f32 = options.workarounds.polyfill_length_scalar_f32;
-    core_polyfills.distance_scalar_f32 = options.workarounds.polyfill_distance_scalar_f32;
     core_polyfills.subgroup_broadcast_f16 = options.workarounds.polyfill_subgroup_broadcast_f16;
     core_polyfills.saturate_as_min_max = options.workarounds.polyfill_saturate_as_min_max_f16;
     TINT_CHECK_RESULT(core::ir::transform::BuiltinPolyfill(module, core_polyfills));

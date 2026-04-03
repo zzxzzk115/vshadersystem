@@ -230,7 +230,7 @@ struct State {
 }  // namespace
 
 Result<SuccessType> ValueToLet(Module& ir, const ValueToLetConfig& cfg) {
-    AssertValid(ir, kValueToLetCapabilities, "before core.ValueToLet");
+    TINT_CHECK_RESULT(ValidateBeforeIfNeeded(ir, kValueToLetCapabilities, "core.ValueToLet"));
 
     State{ir, cfg}.Process();
 

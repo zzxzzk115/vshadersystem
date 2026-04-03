@@ -251,14 +251,15 @@ struct State {
 }  // namespace
 
 Result<SuccessType> DecomposeStridedArray(core::ir::Module& ir) {
-    core::ir::AssertValid(ir,
-                          core::ir::Capabilities{
-                              core::ir::Capability::kAllowMultipleEntryPoints,
-                              core::ir::Capability::kAllowNonCoreTypes,
-                              core::ir::Capability::kAllowOverrides,
-                              core::ir::Capability::kAllowPointerToHandle,
-                          },
-                          "before spirv.DecomposeStridedArray");
+    TINT_CHECK_RESULT(
+        core::ir::ValidateBeforeIfNeeded(ir,
+                                         core::ir::Capabilities{
+                                             core::ir::Capability::kAllowMultipleEntryPoints,
+                                             core::ir::Capability::kAllowNonCoreTypes,
+                                             core::ir::Capability::kAllowOverrides,
+                                             core::ir::Capability::kAllowPointerToHandle,
+                                         },
+                                         "spirv.DecomposeStridedArray"));
 
     State{ir}.Process();
 

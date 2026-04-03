@@ -28,6 +28,9 @@ namespace vshadersystem
 
         // Target SPIR-V version. glslang uses Vulkan/OpenGL envs; we expose a minimal target here.
         int spirvVersion = 0; // 0 = default for environment
+        // Use the WebGPU-oriented compile profile. This currently aligns the
+        // Vulkan client environment with Tint SPIR-V reader expectations.
+        bool webgpuProfile = false;
 
         bool optimize       = false;
         bool debugInfo      = false;

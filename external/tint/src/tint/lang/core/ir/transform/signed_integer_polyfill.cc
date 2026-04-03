@@ -145,23 +145,24 @@ struct State {
 
 Result<SuccessType> SignedIntegerPolyfill(core::ir::Module& ir,
                                           const SignedIntegerPolyfillConfig& cfg) {
-    AssertValid(ir,
-                core::ir::Capabilities{
-                    core::ir::Capability::kAllowDuplicateBindings,
-                    core::ir::Capability::kAllow8BitIntegers,
-                    core::ir::Capability::kAllow16BitIntegers,
-                    core::ir::Capability::kAllow64BitIntegers,
-                    core::ir::Capability::kAllowPointSizeBuiltin,
-                    core::ir::Capability::kAllowVectorElementPointer,
-                    core::ir::Capability::kAllowHandleVarsWithoutBindings,
-                    core::ir::Capability::kAllowClipDistancesOnF32ScalarAndVector,
-                    core::ir::Capability::kAllowAnyLetType,
-                    core::ir::Capability::kMslAllowEntryPointInterface,
-                    core::ir::Capability::kAllowModuleScopeLets,
-                    core::ir::Capability::kAllowAnyInputAttachmentIndexType,
-                    core::ir::Capability::kAllowNonCoreTypes,
-                },
-                "before ir.SignedIntegerPolyfill");
+    TINT_CHECK_RESULT(
+        ValidateBeforeIfNeeded(ir,
+                               core::ir::Capabilities{
+                                   core::ir::Capability::kAllowDuplicateBindings,
+                                   core::ir::Capability::kAllow8BitIntegers,
+                                   core::ir::Capability::kAllow16BitIntegers,
+                                   core::ir::Capability::kAllow64BitIntegers,
+                                   core::ir::Capability::kAllowPointSizeBuiltin,
+                                   core::ir::Capability::kAllowVectorElementPointer,
+                                   core::ir::Capability::kAllowHandleVarsWithoutBindings,
+                                   core::ir::Capability::kAllowClipDistancesOnF32ScalarAndVector,
+                                   core::ir::Capability::kAllowAnyLetType,
+                                   core::ir::Capability::kMslAllowEntryPointInterface,
+                                   core::ir::Capability::kAllowModuleScopeLets,
+                                   core::ir::Capability::kAllowAnyInputAttachmentIndexType,
+                                   core::ir::Capability::kAllowNonCoreTypes,
+                               },
+                               "ir.SignedIntegerPolyfill"));
 
     State{ir, cfg}.Process();
 

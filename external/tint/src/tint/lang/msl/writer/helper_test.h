@@ -81,8 +81,6 @@ class MslWriterTestHelperBase : public BASE {
     Result<SuccessType> Generate(
         Options options = {},
         validate::MslVersion msl_version = validate::MslVersion::kMsl_2_3) {
-        mod.enable_validation_asserts = true;
-
         if (options.entry_point_name.empty()) {
             options.entry_point_name = "entry";
         }

@@ -472,7 +472,7 @@ struct StateImpl : core::ir::transform::ShaderIOBackendState {
 }  // namespace
 
 Result<SuccessType> ShaderIO(core::ir::Module& ir, const ShaderIOConfig& config) {
-    AssertValid(ir, kShaderIOCapabilities, "before spirv.ShaderIO");
+    TINT_CHECK_RESULT(ValidateBeforeIfNeeded(ir, kShaderIOCapabilities, "spirv.ShaderIO"));
 
     core::ir::transform::RunShaderIOBase(ir, [&](core::ir::Module& mod, core::ir::Function* func) {
         return std::make_unique<StateImpl>(mod, func, config);

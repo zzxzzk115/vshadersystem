@@ -139,13 +139,14 @@ struct Impl {
 }  // namespace
 
 Result<SuccessType> PtrToRef(core::ir::Module& mod) {
-    core::ir::AssertValid(mod,
-                          core::ir::Capabilities{
-                              core::ir::Capability::kAllowMultipleEntryPoints,
-                              core::ir::Capability::kAllowOverrides,
-                              core::ir::Capability::kAllowPhonyInstructions,
-                          },
-                          "before wgsl.PtrToRef");
+    TINT_CHECK_RESULT(
+        core::ir::ValidateBeforeIfNeeded(mod,
+                                         core::ir::Capabilities{
+                                             core::ir::Capability::kAllowMultipleEntryPoints,
+                                             core::ir::Capability::kAllowOverrides,
+                                             core::ir::Capability::kAllowPhonyInstructions,
+                                         },
+                                         "wgsl.PtrToRef"));
 
     Impl{mod}.Run();
 

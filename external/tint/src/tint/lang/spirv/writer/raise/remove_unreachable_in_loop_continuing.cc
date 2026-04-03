@@ -94,8 +94,9 @@ struct State {
 }  // namespace
 
 Result<SuccessType> RemoveUnreachableInLoopContinuing(core::ir::Module& ir) {
-    core::ir::AssertValid(ir, kRemoveUnreachableInLoopContinuingCapabilities,
-                          "before spirv.RemoveUnreachableInLoopContinuing");
+    TINT_CHECK_RESULT(
+        core::ir::ValidateBeforeIfNeeded(ir, kRemoveUnreachableInLoopContinuingCapabilities,
+                                         "spirv.RemoveUnreachableInLoopContinuing"));
 
     State{ir}.Process();
 

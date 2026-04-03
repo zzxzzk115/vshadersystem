@@ -78,8 +78,6 @@ tint_add_target(tint_lang_core_ir_transform lib
   lang/core/ir/transform/preserve_padding.h
   lang/core/ir/transform/prevent_infinite_loops.cc
   lang/core/ir/transform/prevent_infinite_loops.h
-  lang/core/ir/transform/propagate_buffer_sizes.cc
-  lang/core/ir/transform/propagate_buffer_sizes.h
   lang/core/ir/transform/remove_continue_in_switch.cc
   lang/core/ir/transform/remove_continue_in_switch.h
   lang/core/ir/transform/remove_terminator_args.cc
@@ -164,7 +162,6 @@ tint_add_target(tint_lang_core_ir_transform_test test
   lang/core/ir/transform/prepare_immediate_data_test.cc
   lang/core/ir/transform/preserve_padding_test.cc
   lang/core/ir/transform/prevent_infinite_loops_test.cc
-  lang/core/ir/transform/propagate_buffer_sizes_test.cc
   lang/core/ir/transform/remove_continue_in_switch_test.cc
   lang/core/ir/transform/remove_terminator_args_test.cc
   lang/core/ir/transform/remove_uniform_vector_component_loads_test.cc

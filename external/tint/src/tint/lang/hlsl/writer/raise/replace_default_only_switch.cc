@@ -98,8 +98,9 @@ struct State {
 }  // namespace
 
 Result<SuccessType> ReplaceDefaultOnlySwitch(core::ir::Module& ir) {
-    AssertValid(ir, core::ir::Capabilities{core::ir::Capability::kAllowDuplicateBindings},
-                "before hlsl.ReplaceDefaultOnlySwitch");
+    TINT_CHECK_RESULT(ValidateBeforeIfNeeded(
+        ir, core::ir::Capabilities{core::ir::Capability::kAllowDuplicateBindings},
+        "hlsl.ReplaceDefaultOnlySwitch"));
 
     State{ir}.Process();
 

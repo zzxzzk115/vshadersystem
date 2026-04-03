@@ -169,7 +169,8 @@ struct State {
 }  // namespace
 
 Result<SuccessType> PreservePadding(Module& ir) {
-    core::ir::AssertValid(ir, kPreservePaddingCapabilities, "before core.PreservePadding");
+    TINT_CHECK_RESULT(
+        ValidateBeforeIfNeeded(ir, kPreservePaddingCapabilities, "core.PreservePadding"));
 
     State{ir}.Process();
 

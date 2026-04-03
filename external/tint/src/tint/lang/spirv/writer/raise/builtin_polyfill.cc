@@ -1445,13 +1445,13 @@ struct State {
 }  // namespace
 
 Result<SuccessType> BuiltinPolyfill(core::ir::Module& ir, PolyfillConfig config) {
-    AssertValid(ir,
-                core::ir::Capabilities{
-                    core::ir::Capability::kAllow8BitIntegers,
-                    core::ir::Capability::kAllowDuplicateBindings,
-                    core::ir::Capability::kAllowNonCoreTypes,
-                },
-                "before spirv.BuiltinPolyfill");
+    TINT_CHECK_RESULT(ValidateBeforeIfNeeded(ir,
+                                             core::ir::Capabilities{
+                                                 core::ir::Capability::kAllow8BitIntegers,
+                                                 core::ir::Capability::kAllowDuplicateBindings,
+                                                 core::ir::Capability::kAllowNonCoreTypes,
+                                             },
+                                             "spirv.BuiltinPolyfill"));
 
     State{ir, config}.Process();
 

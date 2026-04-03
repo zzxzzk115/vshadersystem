@@ -107,12 +107,6 @@ struct Options {
         /// Set to `true` to generate polyfill for f32 abs.
         bool polyfill_f32_abs = false;
 
-        /// Set to `true` to generate polyfill for length(scalar f32).
-        bool polyfill_length_scalar_f32 = false;
-
-        /// Set to `true` to generate polyfill for distance(scalar f32).
-        bool polyfill_distance_scalar_f32 = false;
-
         /// Set to `true` to generate polyfill for f16 saturate.
         bool polyfill_saturate_as_min_max_f16 = false;
 
@@ -131,8 +125,6 @@ struct Options {
                      pass_matrix_by_pointer,
                      polyfill_unary_f32_negation,
                      polyfill_f32_abs,
-                     polyfill_length_scalar_f32,
-                     polyfill_distance_scalar_f32,
                      polyfill_saturate_as_min_max_f16,
                      cooperative_matrix_stride_is_matrix_elements);
     };

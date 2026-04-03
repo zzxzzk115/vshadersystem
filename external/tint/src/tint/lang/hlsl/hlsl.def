@@ -1042,36 +1042,36 @@ implicit(N: num, T: f32_f16) fn frexp(vec<N, T>, vec<N, T>) -> vec<N, T>
                                                           location: vec4<i32>) -> vec4<i32>
 
 @member_function fn InterlockedCompareExchange(byte_address_buffer<read_write>,
-                                    offset: u32,
+                                    offset: iu32,
                              compare_value: iu32,
                                      value: iu32,
                             original_value: ptr<function, iu32, read_write>)
 @member_function fn InterlockedExchange(byte_address_buffer<readable>,
-                                    offset: u32,
+                                    offset: iu32,
                                      value: iu32,
                             original_value: ptr<function, iu32, read_write>)
 @member_function fn InterlockedAdd(byte_address_buffer<readable>,
-                                    offset: u32,
+                                    offset: iu32,
                                      value: iu32,
                             original_value: ptr<function, iu32, read_write>)
 @member_function fn InterlockedMax(byte_address_buffer<readable>,
-                                    offset: u32,
+                                    offset: iu32,
                                      value: iu32,
                             original_value: ptr<function, iu32, read_write>)
 @member_function fn InterlockedMin(byte_address_buffer<readable>,
-                                    offset: u32,
+                                    offset: iu32,
                                      value: iu32,
                             original_value: ptr<function, iu32, read_write>)
 @member_function fn InterlockedAnd(byte_address_buffer<readable>,
-                                    offset: u32,
+                                    offset: iu32,
                                      value: iu32,
                             original_value: ptr<function, iu32, read_write>)
 @member_function fn InterlockedOr(byte_address_buffer<readable>,
-                                    offset: u32,
+                                    offset: iu32,
                                      value: iu32,
                             original_value: ptr<function, iu32, read_write>)
 @member_function fn InterlockedXor(byte_address_buffer<readable>,
-                                    offset: u32,
+                                    offset: iu32,
                                      value: iu32,
                             original_value: ptr<function, iu32, read_write>)
 

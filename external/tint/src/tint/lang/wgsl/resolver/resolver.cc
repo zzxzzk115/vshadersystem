@@ -4359,14 +4359,6 @@ const core::type::ArrayCount* Resolver::ArrayCount(const ast::Expression* count_
         return nullptr;
     }
 
-    auto* ty = count_sem->Type();
-    if (!ty->IsIntegerScalar()) {
-        AddError(count_expr->source)
-            << count_kind << " must evaluate to an integer expression, but is type "
-            << style::Type(ty->FriendlyName());
-        return nullptr;
-    }
-
     switch (count_sem->Stage()) {
         case core::EvaluationStage::kNotEvaluated:
             ICE(count_expr->source) << "array element count was not evaluated";
@@ -4384,6 +4376,13 @@ const core::type::ArrayCount* Resolver::ArrayCount(const ast::Expression* count_
 
         case core::EvaluationStage::kConstant: {
             auto* count_val = count_sem->ConstantValue();
+            if (auto* ty = count_val->Type(); !ty->IsIntegerScalar()) {
+                AddError(count_expr->source)
+                    << count_kind << " must evaluate to a constant integer expression, but is type "
+                    << style::Type(ty->FriendlyName());
+                return nullptr;
+            }
+
             int64_t count = count_val->ValueAs<AInt>();
             if (count < 1) {
                 AddError(count_expr->source)

@@ -42,7 +42,7 @@ namespace tint::core::ir {
 template <typename BASE>
 class IRTestHelperBase : public BASE {
   public:
-    IRTestHelperBase() { mod.enable_validation_asserts = true; }
+    IRTestHelperBase() = default;
     ~IRTestHelperBase() override = default;
 
     /// The IR module

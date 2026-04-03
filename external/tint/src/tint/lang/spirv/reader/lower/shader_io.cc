@@ -740,18 +740,19 @@ struct State {
 }  // namespace
 
 Result<SuccessType> ShaderIO(core::ir::Module& ir) {
-    AssertValid(ir,
-                core::ir::Capabilities{
-                    core::ir::Capability::kAllowMultipleEntryPoints,
-                    core::ir::Capability::kAllowOverrides,
-                    core::ir::Capability::kAllowPhonyInstructions,
-                    core::ir::Capability::kAllowNonCoreTypes,
-                    core::ir::Capability::kAllowStructMatrixDecorations,
-                    core::ir::Capability::kAllowLocationForNumericElements,
-                    core::ir::Capability::kAllowPointerToHandle,
-                    core::ir::Capability::kLoosenValidationForShaderIO,
-                },
-                "before spirv.ShaderIO");
+    TINT_CHECK_RESULT(
+        ValidateBeforeIfNeeded(ir,
+                               core::ir::Capabilities{
+                                   core::ir::Capability::kAllowMultipleEntryPoints,
+                                   core::ir::Capability::kAllowOverrides,
+                                   core::ir::Capability::kAllowPhonyInstructions,
+                                   core::ir::Capability::kAllowNonCoreTypes,
+                                   core::ir::Capability::kAllowStructMatrixDecorations,
+                                   core::ir::Capability::kAllowLocationForNumericElements,
+                                   core::ir::Capability::kAllowPointerToHandle,
+                                   core::ir::Capability::kLoosenValidationForShaderIO,
+                               },
+                               "spirv.ShaderIO"));
 
     return State{ir}.Process();
 }

@@ -30,7 +30,6 @@
 #include <algorithm>
 #include <cstdint>
 #include <functional>
-#include <iostream>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -114,8 +113,15 @@
 #include "src/tint/utils/rtti/castable.h"
 #include "src/tint/utils/rtti/switch.h"
 #include "src/tint/utils/text/styled_text.h"
-#include "src/tint/utils/text/styled_text_printer.h"
 #include "src/tint/utils/text/text_style.h"
+
+/// If set to 1 then the Tint will dump the IR when validating.
+#define TINT_DUMP_IR_WHEN_VALIDATING 0
+#if TINT_DUMP_IR_WHEN_VALIDATING
+#include <iostream>
+
+#include "src/tint/utils/text/styled_text_printer.h"
+#endif
 
 using namespace tint::core::fluent_types;  // NOLINT
 
@@ -128,17 +134,16 @@ struct ValidatedType {
 
 namespace {
 
-/// Prints out the current IR state, iff ir.dump_ir_when_validating is set.
+/// Prints out the current IR state, iff TINT_DUMP_IR_WHEN_VALIDATING is set.
 void DumpIRIfEnabled([[maybe_unused]] const Module& ir,
-                     [[maybe_unused]] const std::string_view msg) {
-#if TINT_ENABLE_IR_DUMPING
-    if (ir.dump_ir_when_validating) {
-        auto printer = StyledTextPrinter::Create(stdout);
-        std::cout << "=========================================================\n";
-        std::cout << "== IR dump " << msg << ":\n";
-        std::cout << "=========================================================\n";
-        printer->Print(Disassembler(ir).Text());
-    }
+                     [[maybe_unused]] const char* msg = "",
+                     [[maybe_unused]] std::string_view timing = "") {
+#if TINT_DUMP_IR_WHEN_VALIDATING
+    auto printer = StyledTextPrinter::Create(stdout);
+    std::cout << "=========================================================\n";
+    std::cout << "== IR dump " << timing << " " << msg << ":\n";
+    std::cout << "=========================================================\n";
+    printer->Print(Disassembler(ir).Text());
 #endif
 }
 
@@ -2835,37 +2840,22 @@ void Validator::CheckFunction(const Function* func) {
                 continue;
             }
 
-            auto address_space = mv->AddressSpace();
-            switch (address_space) {
-                case AddressSpace::kImmediate:
-                    if (user_declared_immediate) {
-                        AddError(var)
-                            << "multiple user-declared immediate data variables referenced "
-                               "by entry point "
-                            << NameOf(func);
-                    }
-                    user_declared_immediate = var;
-                    continue;
-                case AddressSpace::kWorkgroup:
-                    if (!func->IsCompute()) {
-                        AddError(var) << "workgroup variable cannot be used in a " << func->Stage()
-                                      << " shader";
-                    }
-                    continue;
-                case AddressSpace::kPixelLocal:
-                    if (!func->IsFragment()) {
-                        AddError(var) << "pixel_local variable cannot be used in a "
-                                      << func->Stage() << " shader";
-                    }
-                    continue;
-                case AddressSpace::kIn:
-                case AddressSpace::kOut:
-                    break;
-                default:
-                    continue;
+            if (mv->AddressSpace() == AddressSpace::kImmediate) {
+                if (user_declared_immediate) {
+                    AddError(var) << "multiple user-declared immediate data variables referenced "
+                                     "by entry point "
+                                  << NameOf(func);
+                    return;
+                }
+                user_declared_immediate = var;
             }
 
-            if (func->IsFragment() && address_space == AddressSpace::kIn) {
+            if (mv->AddressSpace() != AddressSpace::kIn &&
+                mv->AddressSpace() != AddressSpace::kOut) {
+                continue;
+            }
+
+            if (func->IsFragment() && mv->AddressSpace() == AddressSpace::kIn) {
                 WalkTypeAndMembers(
                     var, ty, attr, [this](const auto* v, const auto* t, const auto& a) {
                         CheckFrontFacingIfBool(
@@ -4386,23 +4376,7 @@ void Validator::CheckUserCall(const UserCall* call) {
     }
 
     for (size_t i = 0; i < args.size(); i++) {
-        bool allow_mismatch = false;
-        if (auto* arg_buffer_ty = args[i]->Type()->UnwrapPtrOrRef()->As<core::type::Buffer>()) {
-            auto* arg_ptr_ty = args[i]->Type()->As<core::type::Pointer>();
-            if (auto* param_ptr_ty = params[i]->Type()->As<core::type::Pointer>()) {
-                if (auto* param_buffer_ty =
-                        param_ptr_ty->UnwrapPtrOrRef()->As<core::type::Buffer>()) {
-                    allow_mismatch = arg_ptr_ty->AddressSpace() == param_ptr_ty->AddressSpace() &&
-                                     arg_ptr_ty->Access() == param_ptr_ty->Access();
-                    uint32_t arg_size = arg_buffer_ty->ConstantCount().value_or(0);
-                    uint32_t param_size = param_buffer_ty->ConstantCount().value_or(0);
-                    allow_mismatch &=
-                        param_buffer_ty->Count()->Is<core::type::RuntimeArrayCount>() ||
-                        param_size < arg_size;
-                }
-            }
-        }
-        if (!allow_mismatch && args[i]->Type() != params[i]->Type()) {
+        if (args[i]->Type() != params[i]->Type()) {
             AddError(call, UserCall::kArgsOperandOffset + i)
                 << "type " << NameOf(params[i]->Type()) << " of function parameter " << i
                 << " does not match argument type " << NameOf(args[i]->Type());
@@ -5249,29 +5223,46 @@ const core::type::Type* Validator::GetVectorPtrElementType(const Instruction* in
 
 }  // namespace
 
-Result<SuccessType> Validate(const Module& mod, Capabilities capabilities, std::string_view msg) {
-    DumpIRIfEnabled(mod, msg);
+Result<SuccessType> Validate(const Module& mod,
+                             Capabilities capabilities,
+                             [[maybe_unused]] const char* msg,
+                             [[maybe_unused]] std::string_view timing) {
+    DumpIRIfEnabled(mod, msg, timing);
     Validator v(mod, capabilities);
-    return v.Run();
+    TINT_CHECK_RESULT(v.Run());
+    return Success;
 }
 
-void AssertValid(const Module& mod,
-                 [[maybe_unused]] Capabilities capabilities,
-                 std::string_view msg) {
-    DumpIRIfEnabled(mod, msg);
+Result<SuccessType> ValidateBefore(const Module& mod, Capabilities capabilities, const char* msg) {
+    return Validate(mod, capabilities, msg, "before");
+}
 
-#if TINT_ENABLE_IR_VALIDATION_ASSERTS
-    if (mod.enable_validation_asserts) {
-        Validator v(mod, capabilities);
-        auto result = v.Run();
-        if (result != Success) {
-            TINT_ICE() << "\n========================================================="
-                       << "\n== IR validation failed " << msg << ":"
-                       << "\n=========================================================\n"
-                       << result.Failure().reason;
-        }
-    }
+Result<SuccessType> ValidateAfter(const Module& mod, Capabilities capabilities, const char* msg) {
+    return Validate(mod, capabilities, msg, "after");
+}
+
+Result<SuccessType> ValidateIfNeeded([[maybe_unused]] const Module& mod,
+                                     [[maybe_unused]] Capabilities capabilities,
+                                     [[maybe_unused]] const char* msg,
+                                     [[maybe_unused]] std::string_view timing) {
+    DumpIRIfEnabled(mod, msg, timing);
+#if TINT_ENABLE_IR_VALIDATION
+    Validator v(mod, capabilities);
+    TINT_CHECK_RESULT(v.Run());
 #endif
+    return Success;
+}
+
+Result<SuccessType> ValidateBeforeIfNeeded(const Module& mod,
+                                           Capabilities capabilities,
+                                           const char* msg) {
+    return ValidateIfNeeded(mod, capabilities, msg, "before");
+}
+
+Result<SuccessType> ValidateAfterIfNeeded(const Module& mod,
+                                          Capabilities capabilities,
+                                          const char* msg) {
+    return ValidateIfNeeded(mod, capabilities, msg, "after");
 }
 
 }  // namespace tint::core::ir

@@ -88,7 +88,7 @@ struct ReplacementValue {
 };
 
 /// The SPIR-V environment that we validate against.
-constexpr auto kTargetEnv = SPV_ENV_VULKAN_1_3;
+constexpr auto kTargetEnv = SPV_ENV_VULKAN_1_1;
 
 /// PIMPL class for SPIR-V parser.
 /// Validates the SPIR-V module and then parses it to produce a Tint IR module.
@@ -139,29 +139,6 @@ class Parser {
                 // generate the needed barriers.
                 name != "SPV_KHR_vulkan_memory_model") {
                 return Failure("SPIR-V extension '" + name + "' is not supported");
-            }
-        }
-
-        // Check for unsupported types.
-        for (const auto& type : *spirv_context_->get_type_mgr()) {
-            switch (type.second->kind()) {
-                case spvtools::opt::analysis::Type::kArray: {
-                    auto kind = type.second->AsArray()->element_type()->kind();
-                    if (kind == spvtools::opt::analysis::Type::kImage ||
-                        kind == spvtools::opt::analysis::Type::kSampler) {
-                        return Failure("arrays of handle types are not supported");
-                    }
-                    break;
-                }
-                case spvtools::opt::analysis::Type::kImage: {
-                    auto* img = type.second->AsImage();
-                    if (img->is_arrayed() && img->is_multisampled()) {
-                        return Failure("arrayed multisampled images are not supported");
-                    }
-                    break;
-                }
-                default:
-                    break;
             }
         }
 
