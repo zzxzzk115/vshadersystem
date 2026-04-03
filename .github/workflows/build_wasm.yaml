@@ -1,0 +1,43 @@
+name: Build WASM
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+    branches: [master]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - uses: xmake-io/github-action-setup-xmake@v1
+        with:
+          xmake-version: latest
+          actions-cache-folder: ".xmake-cache"
+          build-cache: true
+
+      - name: Setup Emscripten SDK
+        uses: mymindstorm/setup-emsdk@v14
+        with:
+          version: latest
+
+      - name: Install dependencies
+        run: sudo apt-get update && sudo apt-get install build-essential cmake git clang ninja-build python3 -y
+
+      - name: Configure WASM Build
+        run: xmake f -p wasm -a wasm32 --policies=build.ccache:y -y
+
+      - name: Show Targets
+        run: xmake show -l targets
+
+      - name: Build
+        run: xmake repo -u && xmake -vD -y
+
+      - name: Show install error log
+        if: failure()
+        run: |
+          find /home/runner/.xmake/cache -name install.txt -exec echo "==== {} ====" \; -exec cat {} \;

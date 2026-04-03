@@ -15,6 +15,8 @@
         <img src="https://img.shields.io/github/actions/workflow/status/zzxzzk115/vshadersystem/build_macos.yaml?branch=master&label=Build-macOS&logo=github" /></a>
     <a href="https://github.com/zzxzzk115/vshadersystem/actions" alt="Build-Android">
         <img src="https://img.shields.io/github/actions/workflow/status/zzxzzk115/vshadersystem/build_android.yaml?branch=master&label=Build-Android&logo=github" /></a>
+    <a href="https://github.com/zzxzzk115/vshadersystem/actions" alt="Build-WASM">
+        <img src="https://img.shields.io/github/actions/workflow/status/zzxzzk115/vshadersystem/build_wasm.yaml?branch=master&label=Build-WASM&logo=github" /></a>
     <a href="https://github.com/zzxzzk115/vshadersystem/issues" alt="GitHub Issues">
         <img src="https://img.shields.io/github/issues/zzxzzk115/vshadersystem"></a>
     <a href="https://www.codefactor.io/repository/github/zzxzzk115/vshadersystem"><img src="https://www.codefactor.io/repository/github/zzxzzk115/vshadersystem/badge" alt="CodeFactor" /></a>
@@ -54,7 +56,7 @@ Designed for integration into:
 - Deterministic hashing
 - Permutation & runtime keyword system
 - Engine-agnostic material injection
-- Cross-platform support (Windows / Linux / macOS / Android)
+- Cross-platform support (Windows / Linux / macOS / Android / WASM)
 
 > v0.7.1 currently targets GLSL-only shader authoring.
 > `slang` support has been removed until the upstream toolchain is stable on Android.
