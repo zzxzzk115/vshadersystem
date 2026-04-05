@@ -77,6 +77,17 @@ namespace vshadersystem
     };
 
     // ------------------------------------------------------------
+    // Resource access
+    // ------------------------------------------------------------
+    enum class ResourceAccess : uint8_t
+    {
+        eUnknown = 0,
+        eReadOnly,
+        eWriteOnly,
+        eReadWrite
+    };
+
+    // ------------------------------------------------------------
     // Semantic
     // ------------------------------------------------------------
     enum class Semantic : uint16_t
@@ -263,6 +274,8 @@ namespace vshadersystem
 
         DescriptorKind kind = DescriptorKind::eUnknown;
 
+        ResourceAccess access = ResourceAccess::eUnknown;
+
         ShaderStageFlags stageFlags = 0;
 
         bool runtimeSized = false;
@@ -286,6 +299,8 @@ namespace vshadersystem
         uint32_t size = 0;
 
         bool isPushConstant = false;
+
+        ResourceAccess access = ResourceAccess::eUnknown;
 
         ShaderStageFlags stageFlags = 0;
 

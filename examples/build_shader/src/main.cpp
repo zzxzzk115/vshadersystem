@@ -69,6 +69,21 @@ static std::string stage_ext(ShaderStage s)
     }
 }
 
+static const char* resource_access_name(ResourceAccess access)
+{
+    switch (access)
+    {
+        case ResourceAccess::eReadOnly:
+            return "read-only";
+        case ResourceAccess::eWriteOnly:
+            return "write-only";
+        case ResourceAccess::eReadWrite:
+            return "read-write";
+        default:
+            return "unknown";
+    }
+}
+
 static void print_param_default(const MaterialParamDesc& p)
 {
     if (!p.hasDefault)
@@ -163,7 +178,16 @@ static void print_shader_binary(const ShaderBinary& bin)
 
     for (const auto& d : bin.reflection.descriptors)
     {
-        std::cout << "  " << d.name << " set=" << d.set << " binding=" << d.binding << "\n";
+        std::cout << "  " << d.name << " set=" << d.set << " binding=" << d.binding
+                  << " access=" << resource_access_name(d.access) << "\n";
+    }
+
+    std::cout << "\nBlocks:\n";
+
+    for (const auto& b : bin.reflection.blocks)
+    {
+        std::cout << "  " << b.name << " set=" << b.set << " binding=" << b.binding << " size=" << b.size
+                  << " access=" << resource_access_name(b.access) << "\n";
     }
 
     std::cout << "\nRenderState:\n";
@@ -294,6 +318,11 @@ int main()
     }
 
     if (!test_single(src, ShaderStage::eFrag))
+    {
+        return 1;
+    }
+
+    if (!test_single(src, ShaderStage::eComp))
     {
         return 1;
     }

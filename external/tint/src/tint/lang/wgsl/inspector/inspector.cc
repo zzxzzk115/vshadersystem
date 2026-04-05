@@ -135,9 +135,14 @@ ResourceBinding ConvertBufferToResourceBinding(const tint::sem::GlobalVariable* 
     if (buffer->AddressSpace() == core::AddressSpace::kStorage) {
         if (buffer->Access() == core::Access::kReadWrite) {
             result.resource_type = ResourceBinding::ResourceType::kStorageBuffer;
+            result.access = ResourceBinding::Access::kReadWrite;
+        } else if (buffer->Access() == core::Access::kWrite) {
+            result.resource_type = ResourceBinding::ResourceType::kStorageBuffer;
+            result.access = ResourceBinding::Access::kWriteOnly;
         } else {
             TINT_ASSERT(buffer->Access() == core::Access::kRead);
             result.resource_type = ResourceBinding::ResourceType::kReadOnlyStorageBuffer;
+            result.access = ResourceBinding::Access::kReadOnly;
         }
     } else {
         TINT_ASSERT(buffer->AddressSpace() == core::AddressSpace::kUniform);
@@ -197,12 +202,15 @@ ResourceBinding ConvertHandleToResourceBinding(const tint::sem::GlobalVariable* 
             switch (tex->Access()) {
                 case core::Access::kWrite:
                     result.resource_type = ResourceBinding::ResourceType::kWriteOnlyStorageTexture;
+                    result.access = ResourceBinding::Access::kWriteOnly;
                     break;
                 case core::Access::kReadWrite:
                     result.resource_type = ResourceBinding::ResourceType::kReadWriteStorageTexture;
+                    result.access = ResourceBinding::Access::kReadWrite;
                     break;
                 case core::Access::kRead:
                     result.resource_type = ResourceBinding::ResourceType::kReadOnlyStorageTexture;
+                    result.access = ResourceBinding::Access::kReadOnly;
                     break;
                 case core::Access::kUndefined:
                     TINT_UNREACHABLE() << "unhandled storage texture access";
@@ -220,9 +228,11 @@ ResourceBinding ConvertHandleToResourceBinding(const tint::sem::GlobalVariable* 
             switch (tex->Access()) {
                 case core::Access::kRead:
                     result.resource_type = ResourceBinding::ResourceType::kReadOnlyTexelBuffer;
+                    result.access = ResourceBinding::Access::kReadOnly;
                     break;
                 case core::Access::kReadWrite:
                     result.resource_type = ResourceBinding::ResourceType::kReadWriteTexelBuffer;
+                    result.access = ResourceBinding::Access::kReadWrite;
                     break;
                 case core::Access::kWrite:
                 case core::Access::kUndefined:

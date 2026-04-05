@@ -47,23 +47,55 @@ static const char* descriptor_kind_name(DescriptorKind kind)
     }
 }
 
+static const char* resource_access_name(ResourceAccess access)
+{
+    switch (access)
+    {
+        case ResourceAccess::eReadOnly:
+            return "read-only";
+        case ResourceAccess::eWriteOnly:
+            return "write-only";
+        case ResourceAccess::eReadWrite:
+            return "read-write";
+        default:
+            return "unknown";
+    }
+}
+
+static bool has_write_only_storage_buffer(const ShaderBinary& bin)
+{
+    for (const auto& d : bin.reflection.descriptors)
+    {
+        if (d.kind == DescriptorKind::eStorageBuffer && d.access == ResourceAccess::eWriteOnly)
+            return true;
+    }
+    return false;
+}
+
 static void print_reflection(const ShaderBinary& bin)
 {
     VSS_LOG_TAG_INFO("webgpu", "  descriptors: %zu", bin.reflection.descriptors.size());
     for (const auto& d : bin.reflection.descriptors)
     {
         VSS_LOG_TAG_INFO("webgpu",
-                         "    - %s (set=%u, binding=%u, kind=%s)",
+                         "    - %s (set=%u, binding=%u, kind=%s, access=%s)",
                          d.name.c_str(),
                          d.set,
                          d.binding,
-                         descriptor_kind_name(d.kind));
+                         descriptor_kind_name(d.kind),
+                         resource_access_name(d.access));
     }
 
     VSS_LOG_TAG_INFO("webgpu", "  blocks: %zu", bin.reflection.blocks.size());
     for (const auto& b : bin.reflection.blocks)
     {
-        VSS_LOG_TAG_INFO("webgpu", "    - %s (set=%u, binding=%u, size=%u)", b.name.c_str(), b.set, b.binding, b.size);
+        VSS_LOG_TAG_INFO("webgpu",
+                         "    - %s (set=%u, binding=%u, size=%u, access=%s)",
+                         b.name.c_str(),
+                         b.set,
+                         b.binding,
+                         b.size,
+                         resource_access_name(b.access));
     }
 }
 
@@ -127,6 +159,34 @@ void main()
     vec4 layered = mix(baseColor, detailColor, mixValue);
     outColor = layered * uFrame.uTint;
 }
+
+[compute]
+#extension GL_EXT_scalar_block_layout : require
+
+layout(local_size_x = 1, local_size_y = 1, local_size_z = 1) in;
+
+layout(set = 2, binding = 0, std430) readonly buffer ReadOnlyData
+{
+    vec4 values[];
+} g_ReadOnlyData;
+
+layout(set = 2, binding = 1, std430) writeonly buffer WriteOnlyData
+{
+    vec4 values[];
+} g_WriteOnlyData;
+
+layout(set = 2, binding = 2, std430) buffer ReadWriteData
+{
+    vec4 values[];
+} g_ReadWriteData;
+
+void main()
+{
+    uint idx = gl_GlobalInvocationID.x;
+    vec4 v = g_ReadOnlyData.values[idx];
+    g_ReadWriteData.values[idx] = v;
+    g_WriteOnlyData.values[idx] = v + vec4(1.0, 0.0, 0.0, 0.0);
+}
 )";
 
     BuildRequest req;
@@ -155,11 +215,23 @@ void main()
         auto wg = spirv_to_wgsl(bin.spirv);
         if (!wg.isOk())
         {
-            VSS_LOG_TAG_ERROR(
-                "webgpu", "SPIR-V -> WGSL failed (%s): %s", stage_name(stage), wg.error().message.c_str());
-            return 2;
+            if (has_write_only_storage_buffer(bin))
+            {
+                VSS_LOG_TAG_INFO("webgpu",
+                                 "SPIR-V -> WGSL skipped for %s: WGSL does not support write-only storage buffers.",
+                                 stage_name(stage));
+            }
+            else
+            {
+                VSS_LOG_TAG_ERROR(
+                    "webgpu", "SPIR-V -> WGSL failed (%s): %s", stage_name(stage), wg.error().message.c_str());
+                return 2;
+            }
         }
-        bin.wgsl = std::move(wg.value());
+        else
+        {
+            bin.wgsl = std::move(wg.value());
+        }
 
         auto encoded = write_vshbin(bin);
         if (!encoded.isOk())
@@ -178,7 +250,7 @@ void main()
         }
 
         const ShaderBinary& out = decoded.value();
-        if (out.wgsl.empty())
+        if (out.wgsl.empty() && !has_write_only_storage_buffer(out))
         {
             VSS_LOG_TAG_ERROR("webgpu", "invalid output (%s): WGSL is empty", stage_name(stage));
             return 5;
@@ -192,9 +264,12 @@ void main()
         VSS_LOG_TAG_INFO("webgpu", "  wgslBytes:   %zu", out.wgsl.size());
         print_reflection(out);
 
-        VSS_LOG_TAG_INFO("webgpu", "  wgsl_preview:");
-        const std::string preview = out.wgsl.substr(0, std::min<size_t>(out.wgsl.size(), 900));
-        VSS_LOG_TAG_INFO("webgpu", "%s", preview.c_str());
+        if (!out.wgsl.empty())
+        {
+            VSS_LOG_TAG_INFO("webgpu", "  wgsl_preview:");
+            const std::string preview = out.wgsl.substr(0, std::min<size_t>(out.wgsl.size(), 900));
+            VSS_LOG_TAG_INFO("webgpu", "%s", preview.c_str());
+        }
     }
 
     return 0;

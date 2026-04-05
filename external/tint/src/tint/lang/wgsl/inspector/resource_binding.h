@@ -81,6 +81,13 @@ struct ResourceBinding {
         kUnknownFiltering,
     };
 
+    enum class Access : uint8_t {
+        kUndefined,
+        kReadOnly,
+        kWriteOnly,
+        kReadWrite,
+    };
+
     /// Enumerator of texel image formats
     enum class TexelFormat : uint8_t {
         kR8Snorm,
@@ -169,6 +176,8 @@ struct ResourceBinding {
     TexelFormat image_format;
     /// Variable name of the binding.
     std::string variable_name;
+    /// Access mode for storage resources.
+    Access access = Access::kUndefined;
 };
 
 /// Convert from internal core::type::TextureDimension to public

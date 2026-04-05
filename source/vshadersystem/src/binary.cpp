@@ -11,7 +11,7 @@
 namespace vshadersystem
 {
     static constexpr uint8_t  kMagic[8] = {'V', 'S', 'H', 'B', 'I', 'N', 0, 0};
-    static constexpr uint32_t kVersion  = 2;
+    static constexpr uint32_t kVersion  = 3;
 
     static inline void write_u32(std::vector<uint8_t>& out, uint32_t v)
     {
@@ -107,6 +107,7 @@ namespace vshadersystem
             write_u32(out, d.binding);
             write_u32(out, d.count);
             write_u8(out, static_cast<uint8_t>(d.kind));
+            write_u8(out, static_cast<uint8_t>(d.access));
             write_u32(out, d.stageFlags);
             write_u8(out, static_cast<uint8_t>(d.runtimeSized ? 1 : 0));
         }
@@ -119,6 +120,7 @@ namespace vshadersystem
             write_u32(out, b.binding);
             write_u32(out, b.size);
             write_u8(out, static_cast<uint8_t>(b.isPushConstant ? 1 : 0));
+            write_u8(out, static_cast<uint8_t>(b.access));
             write_u32(out, b.stageFlags);
 
             write_u32(out, static_cast<uint32_t>(b.members.size()));
@@ -133,7 +135,7 @@ namespace vshadersystem
         return out;
     }
 
-    static Result<ShaderReflection> deserialize_reflection(const uint8_t* p0, size_t n)
+    static Result<ShaderReflection> deserialize_reflection(const uint8_t* p0, size_t n, uint32_t version)
     {
         const uint8_t* p = p0;
         const uint8_t* e = p0 + n;
@@ -166,6 +168,15 @@ namespace vshadersystem
                 return Result<ShaderReflection>::err(
                     {ErrorCode::eDeserializeError, "REFL: failed to read descriptor kind."});
             d.kind = static_cast<DescriptorKind>(kind);
+
+            if (version >= 3)
+            {
+                uint8_t access = 0;
+                if (!read_u8(p, e, access))
+                    return Result<ShaderReflection>::err(
+                        {ErrorCode::eDeserializeError, "REFL: failed to read descriptor access."});
+                d.access = static_cast<ResourceAccess>(access);
+            }
 
             uint32_t stageFlags = 0;
             if (!read_u32(p, e, stageFlags))
@@ -206,6 +217,15 @@ namespace vshadersystem
                 return Result<ShaderReflection>::err(
                     {ErrorCode::eDeserializeError, "REFL: failed to read block push flag."});
             b.isPushConstant = (isPush != 0);
+
+            if (version >= 3)
+            {
+                uint8_t access = 0;
+                if (!read_u8(p, e, access))
+                    return Result<ShaderReflection>::err(
+                        {ErrorCode::eDeserializeError, "REFL: failed to read block access."});
+                b.access = static_cast<ResourceAccess>(access);
+            }
 
             uint32_t stageFlags = 0;
             if (!read_u32(p, e, stageFlags))
@@ -719,7 +739,7 @@ namespace vshadersystem
             }
             else if (tag == tag_u32("REFL"))
             {
-                auto rr = deserialize_reflection(payload, size);
+                auto rr = deserialize_reflection(payload, size, version);
 
                 if (!rr.isOk())
                     return Result<ShaderBinary>::err(rr.error());

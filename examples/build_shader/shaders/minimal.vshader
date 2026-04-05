@@ -77,3 +77,31 @@ void main()
 
     outColor = vec4(baseColor.rgb, 1.0);
 }
+
+[compute]
+#extension GL_EXT_scalar_block_layout : require
+
+layout(local_size_x = 1, local_size_y = 1, local_size_z = 1) in;
+
+layout(set = 2, binding = 0, std430) readonly buffer ReadOnlyData
+{
+    vec4 values[];
+} g_ReadOnlyData;
+
+layout(set = 2, binding = 1, std430) writeonly buffer WriteOnlyData
+{
+    vec4 values[];
+} g_WriteOnlyData;
+
+layout(set = 2, binding = 2, std430) buffer ReadWriteData
+{
+    vec4 values[];
+} g_ReadWriteData;
+
+void main()
+{
+    uint idx = gl_GlobalInvocationID.x;
+    vec4 v = g_ReadOnlyData.values[idx];
+    g_ReadWriteData.values[idx] = v;
+    g_WriteOnlyData.values[idx] = v * vec4(2.0, 2.0, 2.0, 1.0);
+}

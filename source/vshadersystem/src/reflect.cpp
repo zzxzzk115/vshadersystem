@@ -4,6 +4,20 @@
 
 namespace vshadersystem
 {
+    static ResourceAccess map_spirv_access(bool nonReadable, bool nonWritable)
+    {
+        if (nonReadable && nonWritable)
+            return ResourceAccess::eUnknown;
+
+        if (nonReadable)
+            return ResourceAccess::eWriteOnly;
+
+        if (nonWritable)
+            return ResourceAccess::eReadOnly;
+
+        return ResourceAccess::eReadWrite;
+    }
+
     // ------------------------------------------------------------
     // stage mapping
     // ------------------------------------------------------------
@@ -124,6 +138,13 @@ namespace vshadersystem
                 b.kind    = kind;
                 b.stageFlags |= stageBit;
 
+                if (kind == DescriptorKind::eStorageBuffer)
+                {
+                    auto flags = comp.get_buffer_block_flags(r.id);
+                    b.access   = map_spirv_access(flags.get(spv::DecorationNonReadable),
+                                                  flags.get(spv::DecorationNonWritable));
+                }
+
                 const auto& type = comp.get_type(r.type_id);
                 if (!type.array.empty())
                 {
@@ -165,7 +186,7 @@ namespace vshadersystem
             // ----------------------------------------------------
             // blocks
             // ----------------------------------------------------
-            auto add_block = [&](const spirv_cross::Resource& r, bool isPush) {
+            auto add_block = [&](const spirv_cross::Resource& r, bool isPush, bool isStorageBuffer) {
                 BlockLayout blk;
                 blk.name           = r.name.empty() ? comp.get_name(r.id) : r.name;
                 blk.isPushConstant = isPush;
@@ -175,6 +196,13 @@ namespace vshadersystem
                 {
                     blk.set     = comp.get_decoration(r.id, spv::DecorationDescriptorSet);
                     blk.binding = comp.get_decoration(r.id, spv::DecorationBinding);
+                }
+
+                if (isStorageBuffer)
+                {
+                    auto flags = comp.get_buffer_block_flags(r.id);
+                    blk.access = map_spirv_access(flags.get(spv::DecorationNonReadable),
+                                                  flags.get(spv::DecorationNonWritable));
                 }
 
                 const auto& type = comp.get_type(r.base_type_id);
@@ -197,15 +225,15 @@ namespace vshadersystem
             };
 
             for (auto& r : resources.uniform_buffers)
-                add_block(r, false);
+                add_block(r, false, false);
 
             for (auto& r : resources.storage_buffers)
-                add_block(r, false);
+                add_block(r, false, true);
 
             if (opt.includePushConstants)
             {
                 for (auto& r : resources.push_constant_buffers)
-                    add_block(r, true);
+                    add_block(r, true, false);
             }
 
             return Result<ShaderReflection>::ok(out);
