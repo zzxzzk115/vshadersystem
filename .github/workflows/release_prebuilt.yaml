@@ -36,7 +36,7 @@ jobs:
             android: false
           # Release artifacts publish multiple MSVC toolset variants
           # so downstream users can choose a compatible baseline.
-          - os: windows-2022
+          - os: windows-latest
             plat: windows
             arch: x64
             vs: "2022"
@@ -44,7 +44,7 @@ jobs:
             toolset_label: v142
             artifact_suffix: windows-x64-v142
             android: false
-          - os: windows-2022
+          - os: windows-latest
             plat: windows
             arch: arm64
             vs: "2022"
@@ -52,19 +52,19 @@ jobs:
             toolset_label: v142
             artifact_suffix: windows-arm64-v142
             android: false
-          - os: windows-2022
+          - os: windows-latest
             plat: windows
             arch: x64
             vs: "2022"
-            vs_toolset: "14.3"
+            vs_toolset: "14.39"
             toolset_label: v143
             artifact_suffix: windows-x64-v143
             android: false
-          - os: windows-2022
+          - os: windows-latest
             plat: windows
             arch: arm64
             vs: "2022"
-            vs_toolset: "14.3"
+            vs_toolset: "14.39"
             toolset_label: v143
             artifact_suffix: windows-arm64-v143
             android: false
@@ -107,12 +107,39 @@ jobs:
           actions-cache-folder: ".xmake-cache"
           build-cache: true
 
-      - name: Setup MSVC Dev Cmd (Windows)
-        if: ${{ !matrix.android && matrix.plat == 'windows' }}
+      - name: Setup MSVC Dev Cmd (Windows v142)
+        if: ${{ !matrix.android && matrix.plat == 'windows' && matrix.toolset_label == 'v142' }}
         uses: ilammy/msvc-dev-cmd@v1
         with:
           arch: ${{ matrix.arch == 'arm64' && 'amd64_arm64' || 'x64' }}
           toolset: ${{ matrix.vs_toolset }}
+
+      - name: Setup MSVC Dev Cmd (Windows v143)
+        if: ${{ !matrix.android && matrix.plat == 'windows' && matrix.toolset_label == 'v143' }}
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: ${{ matrix.arch == 'arm64' && 'amd64_arm64' || 'x64' }}
+          toolset: ${{ matrix.vs_toolset }}
+
+      - name: Print MSVC Environment (Windows)
+        if: ${{ !matrix.android && matrix.plat == 'windows' }}
+        shell: pwsh
+        run: |
+          Write-Host "Toolset label: ${{ matrix.toolset_label }}"
+          $clCmd = Get-Command cl -ErrorAction Stop
+          Write-Host "cl path: $($clCmd.Source)"
+          $clVersion = (& cl /? 2>&1 | Select-String -Pattern "Compiler Version" | Select-Object -First 1)
+          if ($clVersion) { Write-Host "cl version: $($clVersion.Line.Trim())" }
+          $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
+          if (Test-Path $vswhere) {
+            $installPath = & $vswhere -latest -products * -property installationPath
+            if ($installPath) {
+              $msvcRoot = Join-Path $installPath "VC\Tools\MSVC"
+              if (Test-Path $msvcRoot) {
+                Get-ChildItem -Path $msvcRoot -Directory | Sort-Object Name | ForEach-Object { Write-Host "MSVC dir: $($_.Name)" }
+              }
+            }
+          }
 
       - name: Install Linux Dependencies
         if: ${{ !matrix.android && matrix.plat == 'linux' }}
@@ -158,8 +185,12 @@ jobs:
           test -d "${ANDROID_SDK_ROOT}/ndk/30.0.14904198/toolchains/llvm/prebuilt/linux-x86_64/bin"
           ls -la "${ANDROID_SDK_ROOT}/ndk/30.0.14904198/toolchains/llvm/prebuilt/linux-x86_64/bin"
 
-      - name: Configure (Windows native)
-        if: ${{ !matrix.android && matrix.plat == 'windows' }}
+      - name: Configure (Windows native v142)
+        if: ${{ !matrix.android && matrix.plat == 'windows' && matrix.toolset_label == 'v142' }}
+        run: xmake f -m release -p windows -a ${{ matrix.arch }} --vs=${{ matrix.vs }} --vs_toolset=${{ matrix.vs_toolset }} --vshadersystem_build_examples=n --policies=build.ccache:y -y
+
+      - name: Configure (Windows native v143)
+        if: ${{ !matrix.android && matrix.plat == 'windows' && matrix.toolset_label == 'v143' }}
         run: xmake f -m release -p windows -a ${{ matrix.arch }} --vs=${{ matrix.vs }} --vs_toolset=${{ matrix.vs_toolset }} --vshadersystem_build_examples=n --policies=build.ccache:y -y
 
       - name: Configure (Linux x86_64 native)

@@ -8,7 +8,7 @@ on:
 
 jobs:
   build:
-    runs-on: windows-2022
+    runs-on: windows-latest
     strategy:
       fail-fast: false
       matrix:
@@ -18,7 +18,7 @@ jobs:
             vs_toolset: "14.29"
           - toolset_label: v143
             vs: "2022"
-            vs_toolset: "14.3"
+            vs_toolset: "14.39"
     steps:
       - uses: actions/checkout@v4
         with:
@@ -30,13 +30,45 @@ jobs:
           actions-cache-folder: ".xmake-cache"
           build-cache: true
 
-      - name: Setup MSVC Dev Cmd
+      - name: Setup MSVC Dev Cmd (v142)
+        if: ${{ matrix.toolset_label == 'v142' }}
         uses: ilammy/msvc-dev-cmd@v1
         with:
           arch: x64
           toolset: ${{ matrix.vs_toolset }}
 
-      - name: Cache Build
+      - name: Setup MSVC Dev Cmd (v143)
+        if: ${{ matrix.toolset_label == 'v143' }}
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
+          toolset: ${{ matrix.vs_toolset }}
+
+      - name: Print MSVC Environment
+        shell: pwsh
+        run: |
+          Write-Host "Toolset label: ${{ matrix.toolset_label }}"
+          $clCmd = Get-Command cl -ErrorAction Stop
+          Write-Host "cl path: $($clCmd.Source)"
+          $clVersion = (& cl /? 2>&1 | Select-String -Pattern "Compiler Version" | Select-Object -First 1)
+          if ($clVersion) { Write-Host "cl version: $($clVersion.Line.Trim())" }
+          $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
+          if (Test-Path $vswhere) {
+            $installPath = & $vswhere -latest -products * -property installationPath
+            if ($installPath) {
+              $msvcRoot = Join-Path $installPath "VC\Tools\MSVC"
+              if (Test-Path $msvcRoot) {
+                Get-ChildItem -Path $msvcRoot -Directory | Sort-Object Name | ForEach-Object { Write-Host "MSVC dir: $($_.Name)" }
+              }
+            }
+          }
+
+      - name: Configure (v142)
+        if: ${{ matrix.toolset_label == 'v142' }}
+        run: xmake f -m release -p windows -a x64 --vs=${{ matrix.vs }} --vs_toolset=${{ matrix.vs_toolset }} --policies=build.ccache:y -y
+
+      - name: Configure (v143)
+        if: ${{ matrix.toolset_label == 'v143' }}
         run: xmake f -m release -p windows -a x64 --vs=${{ matrix.vs }} --vs_toolset=${{ matrix.vs_toolset }} --policies=build.ccache:y -y
 
       - name: Build
