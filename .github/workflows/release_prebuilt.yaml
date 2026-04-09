@@ -42,13 +42,6 @@ jobs:
             vs_toolset: "14.29"
             artifact_suffix: windows-x64
             android: false
-          - os: windows-latest
-            plat: windows
-            arch: arm64
-            vs: "2022"
-            vs_toolset: "14.29"
-            artifact_suffix: windows-arm64
-            android: false
           - os: macos-latest
             plat: macosx
             arch: arm64
@@ -92,7 +85,7 @@ jobs:
         if: ${{ !matrix.android && matrix.plat == 'windows' }}
         uses: ilammy/msvc-dev-cmd@v1
         with:
-          arch: ${{ matrix.arch == 'arm64' && 'amd64_arm64' || 'x64' }}
+          arch: x64
           toolset: ${{ matrix.vs_toolset }}
 
       - name: Print MSVC Environment (Windows)
@@ -177,7 +170,7 @@ jobs:
         run: xmake f -m release -p android --ndk="${ANDROID_SDK_ROOT}/ndk/30.0.14904198" --vshadersystem_build_examples=n --policies=build.ccache:y -y
 
       - name: Configure (Desktop)
-        if: ${{ !matrix.android && matrix.plat != 'wasm' && !(matrix.plat == 'windows' && matrix.arch == 'x64') && !(matrix.plat == 'windows' && matrix.arch == 'arm64') && !(matrix.plat == 'linux' && matrix.arch == 'x86_64') && !(matrix.plat == 'macosx' && matrix.arch == 'arm64') }}
+        if: ${{ !matrix.android && matrix.plat != 'wasm' && !(matrix.plat == 'windows' && matrix.arch == 'x64') && !(matrix.plat == 'linux' && matrix.arch == 'x86_64') && !(matrix.plat == 'macosx' && matrix.arch == 'arm64') }}
         run: xmake f -m release -p ${{ matrix.plat }} -a ${{ matrix.arch }} --vshadersystem_build_examples=n --policies=build.ccache:y -y
 
       - name: Configure (Android)

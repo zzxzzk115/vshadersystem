@@ -355,7 +355,6 @@ an automated prebuilt packaging workflow.
   - `vshadersystem-prebuilt-<tag>-linux-x86_64.zip`
   - `vshadersystem-prebuilt-<tag>-linux-arm64.zip`
   - `vshadersystem-prebuilt-<tag>-windows-x64.zip`
-  - `vshadersystem-prebuilt-<tag>-windows-arm64.zip`
   - `vshadersystem-prebuilt-<tag>-macosx-arm64.zip`
   - `vshadersystem-prebuilt-<tag>-android-arm64-v8a.zip`
   - `vshadersystem-prebuilt-<tag>-android-armeabi-v7a.zip`
