@@ -34,12 +34,14 @@ jobs:
             arch: arm64
             artifact_suffix: linux-arm64
             android: false
-          - os: windows-latest
+          # Release artifacts should be built on a stable MSVC baseline
+          # to maximize downstream linker compatibility.
+          - os: windows-2022
             plat: windows
             arch: x64
             artifact_suffix: windows-x64
             android: false
-          - os: windows-latest
+          - os: windows-2022
             plat: windows
             arch: arm64
             artifact_suffix: windows-arm64
