@@ -8,7 +8,17 @@ on:
 
 jobs:
   build:
-    runs-on: windows-latest
+    runs-on: windows-2022
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - toolset_label: v142
+            vs: "2022"
+            vs_toolset: "14.29"
+          - toolset_label: v143
+            vs: "2022"
+            vs_toolset: "14.3"
     steps:
       - uses: actions/checkout@v4
         with:
@@ -20,8 +30,14 @@ jobs:
           actions-cache-folder: ".xmake-cache"
           build-cache: true
 
+      - name: Setup MSVC Dev Cmd
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
+          toolset: ${{ matrix.vs_toolset }}
+
       - name: Cache Build
-        run: xmake f --policies=build.ccache:y -y
+        run: xmake f -m release -p windows -a x64 --vs=${{ matrix.vs }} --vs_toolset=${{ matrix.vs_toolset }} --policies=build.ccache:y -y
 
       - name: Build
         shell: pwsh

@@ -34,17 +34,39 @@ jobs:
             arch: arm64
             artifact_suffix: linux-arm64
             android: false
-          # Release artifacts should be built on a stable MSVC baseline
-          # to maximize downstream linker compatibility.
+          # Release artifacts publish multiple MSVC toolset variants
+          # so downstream users can choose a compatible baseline.
           - os: windows-2022
             plat: windows
             arch: x64
-            artifact_suffix: windows-x64
+            vs: "2022"
+            vs_toolset: "14.29"
+            toolset_label: v142
+            artifact_suffix: windows-x64-v142
             android: false
           - os: windows-2022
             plat: windows
             arch: arm64
-            artifact_suffix: windows-arm64
+            vs: "2022"
+            vs_toolset: "14.29"
+            toolset_label: v142
+            artifact_suffix: windows-arm64-v142
+            android: false
+          - os: windows-2022
+            plat: windows
+            arch: x64
+            vs: "2022"
+            vs_toolset: "14.3"
+            toolset_label: v143
+            artifact_suffix: windows-x64-v143
+            android: false
+          - os: windows-2022
+            plat: windows
+            arch: arm64
+            vs: "2022"
+            vs_toolset: "14.3"
+            toolset_label: v143
+            artifact_suffix: windows-arm64-v143
             android: false
           - os: macos-latest
             plat: macosx
@@ -84,6 +106,13 @@ jobs:
           xmake-version: latest
           actions-cache-folder: ".xmake-cache"
           build-cache: true
+
+      - name: Setup MSVC Dev Cmd (Windows)
+        if: ${{ !matrix.android && matrix.plat == 'windows' }}
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: ${{ matrix.arch == 'arm64' && 'amd64_arm64' || 'x64' }}
+          toolset: ${{ matrix.vs_toolset }}
 
       - name: Install Linux Dependencies
         if: ${{ !matrix.android && matrix.plat == 'linux' }}
@@ -129,9 +158,9 @@ jobs:
           test -d "${ANDROID_SDK_ROOT}/ndk/30.0.14904198/toolchains/llvm/prebuilt/linux-x86_64/bin"
           ls -la "${ANDROID_SDK_ROOT}/ndk/30.0.14904198/toolchains/llvm/prebuilt/linux-x86_64/bin"
 
-      - name: Configure (Windows x64 native)
-        if: ${{ !matrix.android && matrix.plat == 'windows' && matrix.arch == 'x64' }}
-        run: xmake f -m release --vshadersystem_build_examples=n --policies=build.ccache:y -y
+      - name: Configure (Windows native)
+        if: ${{ !matrix.android && matrix.plat == 'windows' }}
+        run: xmake f -m release -p windows -a ${{ matrix.arch }} --vs=${{ matrix.vs }} --vs_toolset=${{ matrix.vs_toolset }} --vshadersystem_build_examples=n --policies=build.ccache:y -y
 
       - name: Configure (Linux x86_64 native)
         if: ${{ !matrix.android && matrix.plat == 'linux' && matrix.arch == 'x86_64' }}
@@ -146,7 +175,7 @@ jobs:
         run: xmake f -m release -p android --ndk="${ANDROID_SDK_ROOT}/ndk/30.0.14904198" --vshadersystem_build_examples=n --policies=build.ccache:y -y
 
       - name: Configure (Desktop)
-        if: ${{ !matrix.android && matrix.plat != 'wasm' && !(matrix.plat == 'windows' && matrix.arch == 'x64') && !(matrix.plat == 'linux' && matrix.arch == 'x86_64') && !(matrix.plat == 'macosx' && matrix.arch == 'arm64') }}
+        if: ${{ !matrix.android && matrix.plat != 'wasm' && !(matrix.plat == 'windows' && matrix.arch == 'x64') && !(matrix.plat == 'windows' && matrix.arch == 'arm64') && !(matrix.plat == 'linux' && matrix.arch == 'x86_64') && !(matrix.plat == 'macosx' && matrix.arch == 'arm64') }}
         run: xmake f -m release -p ${{ matrix.plat }} -a ${{ matrix.arch }} --vshadersystem_build_examples=n --policies=build.ccache:y -y
 
       - name: Configure (Android)
