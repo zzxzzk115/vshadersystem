@@ -34,13 +34,37 @@ jobs:
             arch: arm64
             artifact_suffix: linux-arm64
             android: false
-          # Release artifacts use the stable v142 baseline on Windows.
           - os: windows-latest
             plat: windows
             arch: x64
             vs: "2022"
             vs_toolset: "14.29"
-            artifact_suffix: windows-x64
+            runtime: MD
+            artifact_suffix: windows-x64-msvc-14.29-md
+            android: false
+          - os: windows-latest
+            plat: windows
+            arch: x64
+            vs: "2022"
+            vs_toolset: "14.29"
+            runtime: MT
+            artifact_suffix: windows-x64-msvc-14.29-mt
+            android: false
+          - os: windows-latest
+            plat: windows
+            arch: x64
+            vs: "2022"
+            vs_toolset: "14.42"
+            runtime: MD
+            artifact_suffix: windows-x64-msvc-14.42-md
+            android: false
+          - os: windows-latest
+            plat: windows
+            arch: x64
+            vs: "2022"
+            vs_toolset: "14.42"
+            runtime: MT
+            artifact_suffix: windows-x64-msvc-14.42-mt
             android: false
           - os: macos-latest
             plat: macosx
@@ -94,6 +118,7 @@ jobs:
         run: |
           Write-Host "Target arch: ${{ matrix.arch }}"
           Write-Host "Toolset: ${{ matrix.vs_toolset }}"
+          Write-Host "Runtime: ${{ matrix.runtime }}"
           $clCmd = Get-Command cl -ErrorAction Stop
           Write-Host "cl path: $($clCmd.Source)"
           $clVersion = (& cl /? 2>&1 | Select-String -Pattern "Compiler Version" | Select-Object -First 1)
@@ -155,7 +180,7 @@ jobs:
 
       - name: Configure (Windows native)
         if: ${{ !matrix.android && matrix.plat == 'windows' }}
-        run: xmake f -m release -p windows -a ${{ matrix.arch }} --vs=${{ matrix.vs }} --vs_toolset=${{ matrix.vs_toolset }} --vshadersystem_build_examples=n --policies=build.ccache:y -y
+        run: xmake f -m release -p windows -a ${{ matrix.arch }} --vs=${{ matrix.vs }} --vs_toolset=${{ matrix.vs_toolset }} --runtimes=${{ matrix.runtime }} --vshadersystem_build_examples=n --policies=build.ccache:y -y
 
       - name: Configure (Linux x86_64 native)
         if: ${{ !matrix.android && matrix.plat == 'linux' && matrix.arch == 'x86_64' }}

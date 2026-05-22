@@ -1,4 +1,8 @@
-add_requires("abseil", {system = false})
+local abseil_configs = {}
+if is_plat("windows") then
+    abseil_configs.runtimes = get_config("runtimes") or (is_mode("debug") and "MDd" or "MD")
+end
+add_requires("abseil", {configs = abseil_configs, system = false})
 
 target("tint")
     set_kind("static")

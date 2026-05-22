@@ -26,11 +26,18 @@ if is_plat("windows") then
     add_cxxflags("/bigobj") -- avoid big obj
     add_cxxflags("-D_SILENCE_STDEXT_ARR_ITERS_DEPRECATION_WARNING")
     add_cxxflags("/EHsc")
-    if is_mode("debug") then
-        set_runtimes("MDd")
-        add_links("ucrtd")
+    local runtime = get_config("runtimes")
+    if runtime then
+        set_runtimes(runtime)
+    elseif is_mode("debug") then
+        runtime = "MDd"
+        set_runtimes(runtime)
     else
-        set_runtimes("MD")
+        runtime = "MD"
+        set_runtimes(runtime)
+    end
+    if runtime == "MDd" then
+        add_links("ucrtd")
     end
 else
     add_cxxflags("-fexceptions")
