@@ -1,4 +1,5 @@
 #include "vshadersystem/compiler.hpp"
+#include "vshadersystem/reflect.hpp"
 #include "vshadersystem/result.hpp"
 
 #include <glslang/Include/ResourceLimits.h>
@@ -633,6 +634,11 @@ namespace vshadersystem
         out.spirv        = std::move(spirv);
         out.infoLog      = logger.getAllMessages();
         out.dependencies = includer.dependencies();
+
+        auto reflection = reflect_spirv(out.spirv);
+        if (!reflection.isOk())
+            return Result<CompileOutput>::err(reflection.error());
+        out.reflection = std::move(reflection.value());
 
         return Result<CompileOutput>::ok(std::move(out));
     }
