@@ -54,17 +54,17 @@ jobs:
             plat: windows
             arch: x64
             vs: "2022"
-            vs_toolset: "14.42"
+            vs_toolset: latest
             runtime: MD
-            artifact_suffix: windows-x64-msvc-14.42-md
+            artifact_suffix: windows-x64-msvc-latest-md
             android: false
           - os: windows-latest
             plat: windows
             arch: x64
             vs: "2022"
-            vs_toolset: "14.42"
+            vs_toolset: latest
             runtime: MT
-            artifact_suffix: windows-x64-msvc-14.42-mt
+            artifact_suffix: windows-x64-msvc-latest-mt
             android: false
           - os: macos-latest
             plat: macosx
@@ -105,12 +105,18 @@ jobs:
           actions-cache-folder: ".xmake-cache"
           build-cache: true
 
-      - name: Setup MSVC Dev Cmd (Windows)
-        if: ${{ !matrix.android && matrix.plat == 'windows' }}
+      - name: Setup MSVC Dev Cmd (Windows pinned)
+        if: ${{ !matrix.android && matrix.plat == 'windows' && matrix.vs_toolset != 'latest' }}
         uses: ilammy/msvc-dev-cmd@v1
         with:
           arch: x64
           toolset: ${{ matrix.vs_toolset }}
+
+      - name: Setup MSVC Dev Cmd (Windows latest)
+        if: ${{ !matrix.android && matrix.plat == 'windows' && matrix.vs_toolset == 'latest' }}
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
 
       - name: Print MSVC Environment (Windows)
         if: ${{ !matrix.android && matrix.plat == 'windows' }}
@@ -179,8 +185,12 @@ jobs:
           ls -la "${ANDROID_SDK_ROOT}/ndk/30.0.14904198/toolchains/llvm/prebuilt/linux-x86_64/bin"
 
       - name: Configure (Windows native)
-        if: ${{ !matrix.android && matrix.plat == 'windows' }}
+        if: ${{ !matrix.android && matrix.plat == 'windows' && matrix.vs_toolset != 'latest' }}
         run: xmake f -m release -p windows -a ${{ matrix.arch }} --vs=${{ matrix.vs }} --vs_toolset=${{ matrix.vs_toolset }} --runtimes=${{ matrix.runtime }} --vshadersystem_build_examples=n --policies=build.ccache:y -y
+
+      - name: Configure (Windows native latest)
+        if: ${{ !matrix.android && matrix.plat == 'windows' && matrix.vs_toolset == 'latest' }}
+        run: xmake f -m release -p windows -a ${{ matrix.arch }} --vs=${{ matrix.vs }} --runtimes=${{ matrix.runtime }} --vshadersystem_build_examples=n --policies=build.ccache:y -y
 
       - name: Configure (Linux x86_64 native)
         if: ${{ !matrix.android && matrix.plat == 'linux' && matrix.arch == 'x86_64' }}
