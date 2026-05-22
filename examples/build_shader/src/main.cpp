@@ -188,6 +188,17 @@ static void print_shader_binary(const ShaderBinary& bin)
     {
         std::cout << "  " << b.name << " set=" << b.set << " binding=" << b.binding << " size=" << b.size
                   << " access=" << resource_access_name(b.access) << "\n";
+        for (const auto& m : b.members)
+        {
+            std::cout << "    " << m.name << " type=" << static_cast<int>(m.type) << " offset=" << m.offset
+                      << " size=" << m.size << "\n";
+        }
+    }
+
+    if (bin.reflection.hasLocalSize)
+    {
+        std::cout << "\nLocalSize: " << bin.reflection.localSizeX << "x" << bin.reflection.localSizeY << "x"
+                  << bin.reflection.localSizeZ << "\n";
     }
 
     std::cout << "\nRenderState:\n";

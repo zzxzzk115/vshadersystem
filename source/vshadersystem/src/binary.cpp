@@ -11,7 +11,7 @@
 namespace vshadersystem
 {
     static constexpr uint8_t  kMagic[8] = {'V', 'S', 'H', 'B', 'I', 'N', 0, 0};
-    static constexpr uint32_t kVersion  = 3;
+    static constexpr uint32_t kVersion  = 4;
 
     static inline void write_u32(std::vector<uint8_t>& out, uint32_t v)
     {
@@ -129,8 +129,14 @@ namespace vshadersystem
                 write_string(out, m.name);
                 write_u32(out, m.offset);
                 write_u32(out, m.size);
+                write_u8(out, static_cast<uint8_t>(m.type));
             }
         }
+
+        write_u8(out, static_cast<uint8_t>(r.hasLocalSize ? 1 : 0));
+        write_u32(out, r.localSizeX);
+        write_u32(out, r.localSizeY);
+        write_u32(out, r.localSizeZ);
 
         return out;
     }
@@ -250,10 +256,33 @@ namespace vshadersystem
                 if (!read_u32(p, e, m.size))
                     return Result<ShaderReflection>::err(
                         {ErrorCode::eDeserializeError, "REFL: failed to read member size."});
+                if (version >= 4)
+                {
+                    uint8_t type = 0;
+                    if (!read_u8(p, e, type))
+                        return Result<ShaderReflection>::err(
+                            {ErrorCode::eDeserializeError, "REFL: failed to read member type."});
+                    m.type = static_cast<ParamType>(type);
+                }
                 b.members.push_back(std::move(m));
             }
 
             r.blocks.push_back(std::move(b));
+        }
+
+        if (version >= 4)
+        {
+            uint8_t hasLocalSize = 0;
+            if (!read_u8(p, e, hasLocalSize))
+                return Result<ShaderReflection>::err(
+                    {ErrorCode::eDeserializeError, "REFL: failed to read local size flag."});
+            r.hasLocalSize = (hasLocalSize != 0);
+            if (!read_u32(p, e, r.localSizeX) || !read_u32(p, e, r.localSizeY) ||
+                !read_u32(p, e, r.localSizeZ))
+            {
+                return Result<ShaderReflection>::err(
+                    {ErrorCode::eDeserializeError, "REFL: failed to read local size."});
+            }
         }
 
         if (p != e)
