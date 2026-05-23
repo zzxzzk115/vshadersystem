@@ -11,7 +11,7 @@
 namespace vshadersystem
 {
     static constexpr uint8_t  kMagic[8] = {'V', 'S', 'H', 'B', 'I', 'N', 0, 0};
-    static constexpr uint32_t kVersion  = 4;
+    static constexpr uint32_t kVersion  = 5;
 
     static inline void write_u32(std::vector<uint8_t>& out, uint32_t v)
     {
@@ -351,6 +351,13 @@ namespace vshadersystem
                 write_bytes(out, &p.range.min, sizeof(double));
                 write_bytes(out, &p.range.max, sizeof(double));
             }
+
+            write_u32(out, static_cast<uint32_t>(p.enumOptions.size()));
+            for (const auto& option : p.enumOptions)
+            {
+                write_string(out, option.label);
+                write_u32(out, static_cast<uint32_t>(option.value));
+            }
         }
 
         write_u32(out, static_cast<uint32_t>(m.textures.size()));
@@ -367,7 +374,7 @@ namespace vshadersystem
         return out;
     }
 
-    static Result<MaterialDescription> deserialize_mdesc(const uint8_t* p0, size_t n)
+    static Result<MaterialDescription> deserialize_mdesc(const uint8_t* p0, size_t n, uint32_t version)
     {
         const uint8_t* p = p0;
         const uint8_t* e = p0 + n;
@@ -536,6 +543,31 @@ namespace vshadersystem
                 p += sizeof(double);
                 std::memcpy(&pd.range.max, p, sizeof(double));
                 p += sizeof(double);
+            }
+
+            if (version >= 5)
+            {
+                uint32_t enumOptionCount = 0;
+                if (!read_u32(p, e, enumOptionCount))
+                    return Result<MaterialDescription>::err(
+                        {ErrorCode::eDeserializeError, "MDES: failed to read enum option count."});
+
+                pd.enumOptions.reserve(enumOptionCount);
+                for (uint32_t j = 0; j < enumOptionCount; ++j)
+                {
+                    MaterialParamDesc::EnumOption option;
+                    if (!read_string(p, e, option.label))
+                        return Result<MaterialDescription>::err(
+                            {ErrorCode::eDeserializeError, "MDES: failed to read enum option label."});
+
+                    uint32_t rawValue = 0;
+                    if (!read_u32(p, e, rawValue))
+                        return Result<MaterialDescription>::err(
+                            {ErrorCode::eDeserializeError, "MDES: failed to read enum option value."});
+
+                    option.value = static_cast<int32_t>(rawValue);
+                    pd.enumOptions.push_back(std::move(option));
+                }
             }
 
             m.params.push_back(std::move(pd));
@@ -779,7 +811,7 @@ namespace vshadersystem
             }
             else if (tag == tag_u32("MDES"))
             {
-                auto mm = deserialize_mdesc(payload, size);
+                auto mm = deserialize_mdesc(payload, size, version);
 
                 if (!mm.isOk())
                     return Result<ShaderBinary>::err(mm.error());

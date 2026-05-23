@@ -134,6 +134,7 @@ Supported types:
 - float
 - vec2 / vec3 / vec4
 - int
+- enum(name=0,other=1) (defaults may use either the label or the integer value)
 - Texture2D
 - Texture2DArray
 

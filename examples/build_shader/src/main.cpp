@@ -1,6 +1,7 @@
 #include <vshadersystem/binary.hpp>
 #include <vshadersystem/system.hpp>
 
+#include <cstdint>
 #include <cstring> // memcpy
 #include <fstream>
 #include <iostream>
@@ -94,13 +95,29 @@ static void print_param_default(const MaterialParamDesc& p)
 
     switch (p.type)
     {
-        case ParamType::eFloat:
-        case ParamType::eInt:
-        case ParamType::eUInt:
-        case ParamType::eBool: {
+        case ParamType::eFloat: {
             float v = 0.0f;
             std::memcpy(&v, p.defaultValue.valueBuffer, sizeof(float));
-            std::cout << "  Default(scalar)=" << v << "\n";
+            std::cout << "  Default(float)=" << v << "\n";
+            break;
+        }
+        case ParamType::eInt:
+        {
+            int32_t v = 0;
+            std::memcpy(&v, p.defaultValue.valueBuffer, sizeof(int32_t));
+            std::cout << "  Default(int)=" << v << "\n";
+            break;
+        }
+        case ParamType::eUInt: {
+            uint32_t v = 0;
+            std::memcpy(&v, p.defaultValue.valueBuffer, sizeof(uint32_t));
+            std::cout << "  Default(uint)=" << v << "\n";
+            break;
+        }
+        case ParamType::eBool: {
+            bool v = false;
+            std::memcpy(&v, p.defaultValue.valueBuffer, sizeof(bool));
+            std::cout << "  Default(bool)=" << v << "\n";
             break;
         }
         case ParamType::eVec2: {
@@ -164,6 +181,14 @@ static void print_shader_binary(const ShaderBinary& bin)
                       << " semantic=" << static_cast<int>(p.semantic) << " offset=" << p.offset << " size=" << p.size;
 
             print_param_default(p);
+
+            if (!p.enumOptions.empty())
+            {
+                std::cout << "  Enum options:";
+                for (const auto& option : p.enumOptions)
+                    std::cout << " " << option.label << "=" << option.value;
+                std::cout << "\n";
+            }
         }
 
         std::cout << "\nTextures:\n";

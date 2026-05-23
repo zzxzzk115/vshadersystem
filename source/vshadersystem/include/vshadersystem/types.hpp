@@ -336,6 +336,12 @@ namespace vshadersystem
 
     struct MaterialParamDesc
     {
+        struct EnumOption
+        {
+            std::string label;
+            int32_t     value = 0;
+        };
+
         std::string name;
 
         ParamType type = ParamType::eFloat;
@@ -350,6 +356,8 @@ namespace vshadersystem
 
         bool       hasRange = false;
         ParamRange range;
+
+        std::vector<EnumOption> enumOptions;
     };
 
     struct MaterialTextureDesc

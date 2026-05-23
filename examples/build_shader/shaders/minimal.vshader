@@ -10,6 +10,7 @@ QUALITY    : enum(low,medium,high) permute
 baseColorFactor : vec4 = (1,1,1,1)
 metallicFactor  : float = 0.0
 roughnessFactor : float = 0.5
+toneMode        : enum(linear=0,aces=1,reinhard=2) = aces
 baseColorTex    : Texture2D
 normalTex       : Texture2D
 
@@ -73,7 +74,7 @@ void main()
     baseColor.rgb *= 0.7;
 #endif
 
-    baseColor.rgb = applyQuality(baseColor.rgb);
+    baseColor.rgb = applyQuality(baseColor.rgb + float(mat.toneMode) * 0.0);
 
     outColor = vec4(baseColor.rgb, 1.0);
 }

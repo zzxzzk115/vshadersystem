@@ -40,11 +40,16 @@ namespace vshadersystem
         // name -> semantic/default/range
         struct ParamMeta
         {
+            bool      hasType = false;
+            ParamType type    = ParamType::eFloat;
+
             Semantic     semantic   = Semantic::eUnknown;
             bool         hasDefault = false;
             ParamDefault defaultValue {};
             bool         hasRange = false;
             ParamRange   range {};
+
+            std::vector<MaterialParamDesc::EnumOption> enumOptions;
         };
 
         struct TextureMeta

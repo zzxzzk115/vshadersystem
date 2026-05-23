@@ -447,6 +447,8 @@ namespace vshadersystem
                     const auto& pm = meta.params.at(k);
 
                     m += "p:" + k + ":sem=" + std::to_string(static_cast<uint32_t>(pm.semantic)) + "\n";
+                    m += "p:" + k + ":hasType=" + std::to_string(pm.hasType) + "\n";
+                    m += "p:" + k + ":type=" + std::to_string(static_cast<uint32_t>(pm.type)) + "\n";
 
                     if (pm.hasDefault)
                     {
@@ -465,6 +467,11 @@ namespace vshadersystem
                     {
                         m += "p:" + k + ":range=" + std::to_string(pm.range.min) + "," + std::to_string(pm.range.max) +
                              "\n";
+                    }
+
+                    for (const auto& option : pm.enumOptions)
+                    {
+                        m += "p:" + k + ":enum=" + option.label + "=" + std::to_string(option.value) + "\n";
                     }
                 }
             }
@@ -893,6 +900,9 @@ namespace vshadersystem
             if (it != meta.params.end())
             {
                 pd.semantic = it->second.semantic;
+                if (it->second.hasType)
+                    pd.type = it->second.type;
+                pd.enumOptions = it->second.enumOptions;
 
                 if (it->second.hasDefault)
                 {
@@ -949,7 +959,10 @@ namespace vshadersystem
     // ============================================================
 
     static Result<void>
-    validate_and_build_mdesc(MaterialDescription& mdesc, const ShaderReflection& refl, const ParsedMetadata& meta)
+    validate_and_build_mdesc(MaterialDescription&  mdesc,
+                             const ShaderReflection& refl,
+                             const ParsedMetadata&   meta,
+                             const std::string&      materialSource)
     {
         const std::string blockName = mdesc.materialBlockName;
 
@@ -1012,6 +1025,9 @@ namespace vshadersystem
                     if (it != meta.params.end())
                     {
                         pd.semantic = it->second.semantic;
+                        if (it->second.hasType)
+                            pd.type = it->second.type;
+                        pd.enumOptions = it->second.enumOptions;
 
                         if (it->second.hasDefault)
                         {
@@ -1034,12 +1050,9 @@ namespace vshadersystem
             }
             else
             {
-                // No reflected Material block for this stage (e.g. vertex shader not using Material).
-                // Keep an empty MaterialDescription for this stage.
-                mdesc.materialParamSize = 0;
-                mdesc.params.clear();
-                mdesc.textures.clear();
-                mdesc.renderState = meta.renderState;
+                auto parsed = build_mdesc_from_struct_scalar_layout(materialSource, blockName, mdesc, meta);
+                if (!parsed.isOk())
+                    return parsed;
             }
         }
         // ------------------------------------------------------------
@@ -1320,9 +1333,9 @@ namespace vshadersystem
         else
             mdesc.materialBlockName = "Material";
 
-        // IMPORTANT: for struct-fallback parsing we must parse from the ORIGINAL file source,
-        // not the filtered/stripped/injected per-stage text.
-        auto vr = validate_and_build_mdesc(mdesc, bin.reflection, meta);
+        // The fallback parser needs the final per-stage source, because INI [properties]
+        // generates the Material struct during stage assembly.
+        auto vr = validate_and_build_mdesc(mdesc, bin.reflection, meta, stageSrc.sourceText);
 
         if (!vr.isOk())
             return Result<BuildResult>::err(vr.error());
@@ -1457,7 +1470,7 @@ namespace vshadersystem
 
         // When building from raw SPIR-V we cannot parse GLSL structs from text.
         // Keep block-based behavior only.
-        auto vr = validate_and_build_mdesc(mdesc, r.value(), emptyMeta);
+        auto vr = validate_and_build_mdesc(mdesc, r.value(), emptyMeta, {});
 
         if (!vr.isOk())
             return Result<ShaderBinary>::err(vr.error());

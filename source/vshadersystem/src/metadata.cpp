@@ -492,7 +492,21 @@ namespace vshadersystem
         outName          = trim(s.substr(0, colon));
         std::string rest = trim(s.substr(colon + 1));
 
-        const size_t eq = rest.find('=');
+        size_t eq    = std::string::npos;
+        int    depth = 0;
+        for (size_t i = 0; i < rest.size(); ++i)
+        {
+            if (rest[i] == '(')
+                ++depth;
+            else if (rest[i] == ')' && depth > 0)
+                --depth;
+            else if (rest[i] == '=' && depth == 0)
+            {
+                eq = i;
+                break;
+            }
+        }
+
         if (eq == std::string::npos)
         {
             outType = trim(rest);
@@ -524,10 +538,134 @@ namespace vshadersystem
             return "mat3";
         if (tyLower == "mat4")
             return "mat4";
+        if (starts_with(tyLower, "enum"))
+            return "int";
         return {};
     }
 
     static inline bool is_texture_type(const std::string& tyLower) { return starts_with(tyLower, "texture"); }
+
+    static inline bool param_type_from_property_type(const std::string& tyLower, ParamType& out)
+    {
+        if (tyLower == "float")
+        {
+            out = ParamType::eFloat;
+            return true;
+        }
+        if (tyLower == "int" || starts_with(tyLower, "enum"))
+        {
+            out = ParamType::eInt;
+            return true;
+        }
+        if (tyLower == "uint")
+        {
+            out = ParamType::eUInt;
+            return true;
+        }
+        if (tyLower == "bool")
+        {
+            out = ParamType::eBool;
+            return true;
+        }
+        if (tyLower == "vec2")
+        {
+            out = ParamType::eVec2;
+            return true;
+        }
+        if (tyLower == "vec3")
+        {
+            out = ParamType::eVec3;
+            return true;
+        }
+        if (tyLower == "vec4")
+        {
+            out = ParamType::eVec4;
+            return true;
+        }
+        if (tyLower == "mat3")
+        {
+            out = ParamType::eMat3;
+            return true;
+        }
+        if (tyLower == "mat4")
+        {
+            out = ParamType::eMat4;
+            return true;
+        }
+        return false;
+    }
+
+    static std::vector<MaterialParamDesc::EnumOption> parse_enum_options(std::string_view typeText)
+    {
+        std::vector<MaterialParamDesc::EnumOption> out;
+        std::string ty = to_lower(trim(std::string(typeText)));
+        if (!starts_with(ty, "enum"))
+            return out;
+
+        const size_t lp = ty.find('(');
+        const size_t rp = ty.rfind(')');
+        if (lp == std::string::npos || rp == std::string::npos || rp <= lp + 1)
+            return out;
+
+        std::string       inner = ty.substr(lp + 1, rp - lp - 1);
+        std::stringstream ss(inner);
+        std::string       item;
+        int32_t           nextValue = 0;
+        while (std::getline(ss, item, ','))
+        {
+            item = trim(item);
+            if (item.empty())
+                continue;
+
+            MaterialParamDesc::EnumOption option;
+            const size_t eq = item.find('=');
+            if (eq == std::string::npos)
+            {
+                option.label = item;
+                option.value = nextValue;
+            }
+            else
+            {
+                option.label = trim(item.substr(0, eq));
+                const auto valueText = trim(item.substr(eq + 1));
+                try
+                {
+                    option.value = static_cast<int32_t>(std::stoi(valueText));
+                }
+                catch (...)
+                {
+                    option.value = nextValue;
+                }
+            }
+            nextValue = option.value + 1;
+            out.push_back(std::move(option));
+        }
+        return out;
+    }
+
+    static bool parse_int_default(std::string_view                                      text,
+                                  const std::vector<MaterialParamDesc::EnumOption>& enumOptions,
+                                  int32_t&                                           out)
+    {
+        std::string value = to_lower(trim(std::string(text)));
+        for (const auto& option : enumOptions)
+        {
+            if (to_lower(option.label) == value)
+            {
+                out = option.value;
+                return true;
+            }
+        }
+        try
+        {
+            out = static_cast<int32_t>(std::stoi(value));
+            return true;
+        }
+        catch (...)
+        {
+            return false;
+        }
+    }
 
     static Result<ParsedMetadata> parse_ini_metadata(std::string_view sourceText)
     {
@@ -545,8 +683,8 @@ namespace vshadersystem
             bool        isTexture = false;
 
             // default for non-texture
-            bool               hasDefault = false;
-            std::vector<float> defaultValues;
+            ParamType type = ParamType::eFloat;
+            std::vector<MaterialParamDesc::EnumOption> enumOptions;
         };
 
         std::vector<PropDecl> props;
@@ -812,6 +950,8 @@ namespace vshadersystem
                 p.typeLower = to_lower(ty);
                 p.isTexture = is_texture_type(p.typeLower);
                 p.glslType  = glsl_type_from_property_type(p.typeLower);
+                (void)param_type_from_property_type(p.typeLower, p.type);
+                p.enumOptions = parse_enum_options(p.typeLower);
 
                 if (!p.isTexture && p.glslType.empty())
                 {
@@ -820,41 +960,78 @@ namespace vshadersystem
                 }
 
                 // Default values
-                if (!p.isTexture && !def.empty())
+                if (!p.isTexture)
                 {
-                    std::vector<float> values;
-                    std::string        d = def;
-                    d                    = trim(d);
-                    if (!d.empty() && d.front() != '(')
-                    {
-                        // scalar
-                        float v = 0.0f;
-                        if (!parse_float(d, v))
-                            return Result<ParsedMetadata>::err(
-                                {ErrorCode::eParseError, "Invalid default for property '" + name + "'"});
-                        values.push_back(v);
-                    }
-                    else
-                    {
-                        if (!parse_parenthesized_list(d, values))
-                            return Result<ParsedMetadata>::err(
-                                {ErrorCode::eParseError, "Invalid default for property '" + name + "'"});
-                    }
-                    p.hasDefault    = true;
-                    p.defaultValues = std::move(values);
+                    ParsedMetadata::ParamMeta pm;
+                    pm.semantic    = Semantic::eUnknown;
+                    pm.hasType     = true;
+                    pm.type        = p.type;
+                    pm.enumOptions = p.enumOptions;
+                    pm.hasDefault  = false;
+                    pm.defaultValue.type = p.type;
 
-                    ParsedMetadata::ParamMeta pm;
-                    pm.semantic   = Semantic::eUnknown;
-                    pm.hasDefault = true;
-                    write_default(pm.defaultValue, p.defaultValues);
-                    out.params[p.name] = pm;
-                }
-                else if (!p.isTexture)
-                {
-                    ParsedMetadata::ParamMeta pm;
-                    pm.semantic        = Semantic::eUnknown;
-                    pm.hasDefault      = false;
-                    out.params[p.name] = pm;
+                    if (!def.empty())
+                    {
+                        std::string d = trim(def);
+                        if (p.type == ParamType::eInt)
+                        {
+                            int32_t v = 0;
+                            if (!parse_int_default(d, p.enumOptions, v))
+                                return Result<ParsedMetadata>::err(
+                                    {ErrorCode::eParseError, "Invalid default for property '" + name + "'"});
+                            std::memset(pm.defaultValue.valueBuffer, 0, sizeof(pm.defaultValue.valueBuffer));
+                            std::memcpy(pm.defaultValue.valueBuffer, &v, sizeof(v));
+                        }
+                        else if (p.type == ParamType::eUInt)
+                        {
+                            uint32_t v = 0;
+                            try
+                            {
+                                v = static_cast<uint32_t>(std::stoul(d));
+                            }
+                            catch (...)
+                            {
+                                return Result<ParsedMetadata>::err(
+                                    {ErrorCode::eParseError, "Invalid default for property '" + name + "'"});
+                            }
+                            std::memset(pm.defaultValue.valueBuffer, 0, sizeof(pm.defaultValue.valueBuffer));
+                            std::memcpy(pm.defaultValue.valueBuffer, &v, sizeof(v));
+                        }
+                        else if (p.type == ParamType::eBool)
+                        {
+                            const auto lowered = to_lower(d);
+                            if (lowered != "true" && lowered != "1" && lowered != "on" && lowered != "false" &&
+                                lowered != "0" && lowered != "off")
+                            {
+                                return Result<ParsedMetadata>::err(
+                                    {ErrorCode::eParseError, "Invalid default for property '" + name + "'"});
+                            }
+                            const bool v = lowered == "true" || lowered == "1" || lowered == "on";
+                            std::memset(pm.defaultValue.valueBuffer, 0, sizeof(pm.defaultValue.valueBuffer));
+                            std::memcpy(pm.defaultValue.valueBuffer, &v, sizeof(v));
+                        }
+                        else
+                        {
+                            std::vector<float> values;
+                            if (!d.empty() && d.front() != '(')
+                            {
+                                float v = 0.0f;
+                                if (!parse_float(d, v))
+                                    return Result<ParsedMetadata>::err(
+                                        {ErrorCode::eParseError, "Invalid default for property '" + name + "'"});
+                                values.push_back(v);
+                            }
+                            else
+                            {
+                                if (!parse_parenthesized_list(d, values))
+                                    return Result<ParsedMetadata>::err(
+                                        {ErrorCode::eParseError, "Invalid default for property '" + name + "'"});
+                            }
+                            write_default(pm.defaultValue, values);
+                        }
+                        pm.hasDefault = true;
+                    }
+                    out.params[p.name] = std::move(pm);
                 }
                 else
                 {
