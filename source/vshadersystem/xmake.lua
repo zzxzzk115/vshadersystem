@@ -12,6 +12,7 @@ target("vshadersystem")
 	set_kind("static")
 
 	add_headerfiles("include/(vshadersystem/**.hpp)")
+	add_headerfiles("include/(vshadersystem/**.h)")
 	add_includedirs("include", {public = true})
 
 	add_files("src/**.cpp")
