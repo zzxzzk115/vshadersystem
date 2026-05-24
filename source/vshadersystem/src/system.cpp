@@ -140,7 +140,7 @@ namespace vshadersystem
         }
         if (sectionLower == "rchit" || sectionLower == "closesthit" || sectionLower == "raychit")
         {
-            out = ShaderStage::eRmiss;
+            out = ShaderStage::eRchit;
             return true;
         }
         if (sectionLower == "rahit" || sectionLower == "anyhit" || sectionLower == "rayahit")
