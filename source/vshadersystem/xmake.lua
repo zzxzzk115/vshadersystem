@@ -2,7 +2,7 @@
 -- we use 1.4.335
 local dep_configs = {debug = is_mode("debug")}
 if is_plat("windows") then
-    dep_configs.runtimes = get_config("runtimes") or (is_mode("debug") and "MDd" or "MD")
+    dep_configs.runtimes = get_config("runtimes") or (is_mode("debug") and "MTd" or "MT")
 end
 add_requires("spirv-cross vulkan-sdk-1.4.335", {configs = dep_configs, system = false})
 add_requires("glslang 1.4.335+0", {configs = dep_configs, system = false})

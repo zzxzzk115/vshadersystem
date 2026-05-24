@@ -2,7 +2,7 @@
 set_project("vshadersystem")
 
 -- set project version
-set_version("0.9.0")
+set_version("0.9.1")
 
 -- set language version: C++ 23
 set_languages("cxx23")
@@ -30,14 +30,11 @@ if is_plat("windows") then
     if runtime then
         set_runtimes(runtime)
     elseif is_mode("debug") then
-        runtime = "MDd"
+        runtime = "MTd"
         set_runtimes(runtime)
     else
-        runtime = "MD"
+        runtime = "MT"
         set_runtimes(runtime)
-    end
-    if runtime == "MDd" then
-        add_links("ucrtd")
     end
 else
     add_cxxflags("-fexceptions")
