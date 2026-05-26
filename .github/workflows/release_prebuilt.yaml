@@ -86,7 +86,7 @@ jobs:
             arch: x86_64
             artifact_suffix: android-x86_64
             android: true
-          - os: ubuntu-latest
+          - os: macos-latest
             plat: wasm
             arch: wasm32
             artifact_suffix: wasm-wasm32
@@ -97,6 +97,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
+          ref: ${{ github.event.release.tag_name || inputs.tag }}
           submodules: recursive
 
       - uses: xmake-io/github-action-setup-xmake@v1
@@ -159,7 +160,7 @@ jobs:
         run: sudo apt-get update && sudo apt-get install build-essential cmake git clang ninja-build -y
 
       - name: Install WASM Dependencies
-        if: ${{ matrix.plat == 'wasm' }}
+        if: ${{ matrix.plat == 'wasm' && runner.os == 'Linux' }}
         run: sudo apt-get update && sudo apt-get install build-essential cmake git clang ninja-build python3 -y
 
       - name: Setup Linux Cross Toolchains
