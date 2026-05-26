@@ -6,6 +6,7 @@
 #include <glslang/Public/ShaderLang.h>
 #include <glslang/SPIRV/GlslangToSpv.h>
 
+#include <algorithm>
 #include <cassert>
 #include <cstdint>
 #include <cstring>
@@ -15,6 +16,7 @@
 #include <regex>
 #include <sstream>
 #include <string>
+#include <unordered_map>
 #include <unordered_set>
 #include <utility>
 #include <vector>
@@ -253,6 +255,38 @@ namespace vshadersystem
             return canon;
         }
 
+        std::string normalize_virtual_path(std::string path)
+        {
+            std::replace(path.begin(), path.end(), '\\', '/');
+            while (path.starts_with("./"))
+                path.erase(0, 2);
+
+            std::vector<std::string> parts;
+            std::stringstream        ss(path);
+            std::string              part;
+            while (std::getline(ss, part, '/'))
+            {
+                if (part.empty() || part == ".")
+                    continue;
+                if (part == "..")
+                {
+                    if (!parts.empty())
+                        parts.pop_back();
+                    continue;
+                }
+                parts.push_back(std::move(part));
+            }
+
+            std::string out;
+            for (const auto& item : parts)
+            {
+                if (!out.empty())
+                    out.push_back('/');
+                out += item;
+            }
+            return out;
+        }
+
         // We build a preamble that:
         // - Enables include directives for glslang (#include "file")
         // - Enables cpp-style line directives for better error reporting
@@ -392,9 +426,18 @@ namespace vshadersystem
         class RecordingIncluder final : public glslang::TShader::Includer
         {
         public:
-            RecordingIncluder(std::filesystem::path rootFilePath, std::vector<std::string> extraIncludeDirs) :
+            RecordingIncluder(std::filesystem::path              rootFilePath,
+                              std::vector<std::string>           extraIncludeDirs,
+                              std::vector<VirtualIncludeFile>     virtualIncludeFiles) :
                 m_RootFilePath(std::move(rootFilePath))
             {
+                for (auto& file : virtualIncludeFiles)
+                {
+                    if (file.virtualPath.empty())
+                        continue;
+                    m_VirtualFiles[normalize_virtual_path(std::move(file.virtualPath))] = std::move(file.sourceText);
+                }
+
                 // Root file directory (highest priority)
                 if (!m_RootFilePath.empty())
                 {
@@ -439,6 +482,9 @@ namespace vshadersystem
                 if (!headerName || !*headerName)
                     return nullptr;
 
+                if (auto* virtualFile = resolveVirtual(headerName, includerName))
+                    return makeVirtualIncludeResult(virtualFile->first, virtualFile->second);
+
                 std::filesystem::path resolved;
                 if (!resolve(headerName, includerName, resolved))
                     return nullptr;
@@ -462,6 +508,42 @@ namespace vshadersystem
 
                 // Store resolved path as "headerName" for better diagnostics
                 return new IncludeResult(resolved.string(), data, n, data);
+            }
+
+            std::pair<const std::string, std::string>* resolveVirtual(const char* headerName, const char* includerName)
+            {
+                const auto req = normalize_virtual_path(headerName);
+                if (req.empty())
+                    return nullptr;
+
+                if (includerName && *includerName)
+                {
+                    const std::filesystem::path inc(normalize_virtual_path(includerName));
+                    const auto                  parent = inc.parent_path().generic_string();
+                    if (!parent.empty())
+                    {
+                        const auto relative = normalize_virtual_path(parent + "/" + req);
+                        if (auto it = m_VirtualFiles.find(relative); it != m_VirtualFiles.end())
+                            return &*it;
+                    }
+                }
+
+                if (auto it = m_VirtualFiles.find(req); it != m_VirtualFiles.end())
+                    return &*it;
+
+                return nullptr;
+            }
+
+            IncludeResult* makeVirtualIncludeResult(const std::string& resolved, const std::string& content)
+            {
+                if (m_DepSet.insert(resolved).second)
+                    m_Dependencies.push_back(resolved);
+
+                const size_t n    = content.size();
+                char*        data = new char[n + 1];
+                std::memcpy(data, content.data(), n);
+                data[n] = '\0';
+                return new IncludeResult(resolved, data, n, data);
             }
 
             bool resolve(const char* headerName, const char* includerName, std::filesystem::path& out)
@@ -513,6 +595,7 @@ namespace vshadersystem
         private:
             std::filesystem::path              m_RootFilePath;
             std::vector<std::filesystem::path> m_SearchDirs;
+            std::unordered_map<std::string, std::string> m_VirtualFiles;
 
             std::vector<std::string>        m_Dependencies;
             std::unordered_set<std::string> m_DepSet;
@@ -562,7 +645,9 @@ namespace vshadersystem
         shader.setPreamble(preamble.empty() ? nullptr : preamble.c_str());
 
         // Include + dependency recording.
-        RecordingIncluder includer(std::filesystem::path(input.virtualPath), opt.includeDirs);
+        RecordingIncluder includer(std::filesystem::path(input.virtualPath),
+                                   opt.includeDirs,
+                                   opt.virtualIncludeFiles);
 
         // Messages: keep Vulkan/SPIR-V rules. Cascading errors improves logs.
         constexpr auto kMessages =

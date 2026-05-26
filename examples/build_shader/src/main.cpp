@@ -1,6 +1,8 @@
 #include <vshadersystem/binary.hpp>
+#include <vshadersystem/compiler.hpp>
 #include <vshadersystem/system.hpp>
 
+#include <algorithm>
 #include <cstdint>
 #include <cstring> // memcpy
 #include <fstream>
@@ -341,6 +343,52 @@ layout(set=1,binding=0) uniform sampler2D uBindlessTextures[];
     return true;
 }
 
+static bool test_virtual_include()
+{
+    std::cout << "\n=== VIRTUAL INCLUDE ===\n";
+
+    BuildRequest req;
+    req.source.virtualPath = "generated/material_graph/test.frag.vshader";
+    req.source.sourceText = R"(#version 460
+#include "include/test/constants.glsl"
+layout(location = 0) out vec4 FragColor;
+void main()
+{
+    FragColor = vec4(kTint, 1.0);
+}
+)";
+    req.options.stage = ShaderStage::eFrag;
+    req.options.language = ShaderLanguage::eGLSL;
+    req.options.virtualIncludeFiles.push_back({
+        .virtualPath = "include/test/constants.glsl",
+        .sourceText = "const vec3 kTint = vec3(0.25, 0.5, 1.0);\n",
+    });
+
+    auto compiled = compile_glsl_to_spirv(req.source, req.options);
+    if (!compiled.isOk())
+    {
+        std::cerr << "Failed to compile shader with virtual include: " << compiled.error().message << "\n";
+        return false;
+    }
+
+    const auto& deps = compiled.value().dependencies;
+    const bool found = std::find(deps.begin(), deps.end(), "include/test/constants.glsl") != deps.end();
+    if (!found)
+    {
+        std::cerr << "Virtual include was not recorded as a dependency.\n";
+        return false;
+    }
+
+    auto built = build_from_spirv(compiled.value().spirv, ShaderStage::eFrag);
+    if (!built.isOk())
+    {
+        std::cerr << "Failed to build shader binary from virtual include SPIR-V: " << built.error().message << "\n";
+        return false;
+    }
+
+    return write_read_print(built.value(), "virtual_include.frag.vshbin");
+}
+
 int main()
 {
     auto src = readFile(SHADER_DIR SHADER_NAME);
@@ -364,6 +412,11 @@ int main()
     }
 
     if (!test_multiple(src))
+    {
+        return 1;
+    }
+
+    if (!test_virtual_include())
     {
         return 1;
     }

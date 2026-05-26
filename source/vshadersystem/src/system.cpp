@@ -388,6 +388,12 @@ namespace vshadersystem
         for (const auto& d : opt.includeDirs)
             h = xxhash64(d, h);
 
+        for (const auto& file : opt.virtualIncludeFiles)
+        {
+            h = xxhash64(file.virtualPath, h);
+            h = xxhash64(file.sourceText, h);
+        }
+
         // metadata normalization (what impacts .vshbin content)
         {
             std::string m;

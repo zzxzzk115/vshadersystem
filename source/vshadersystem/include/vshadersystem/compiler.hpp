@@ -15,6 +15,14 @@ namespace vshadersystem
         std::string value;
     };
 
+    struct VirtualIncludeFile
+    {
+        // Logical include path, for example "include/common/gpu_scene.glsl".
+        // Paths are matched with normalized forward slashes.
+        std::string virtualPath;
+        std::string sourceText;
+    };
+
     struct CompileOptions
     {
         ShaderStage stage = ShaderStage::eUnknown;
@@ -36,8 +44,9 @@ namespace vshadersystem
         bool debugInfo      = false;
         bool stripDebugInfo = false;
 
-        std::vector<Define>      defines;
-        std::vector<std::string> includeDirs;
+        std::vector<Define>             defines;
+        std::vector<std::string>        includeDirs;
+        std::vector<VirtualIncludeFile> virtualIncludeFiles;
 
         // --------------------------------------------------------------------
         // MaterialAccessInjection (tool-layer contract)
