@@ -372,6 +372,7 @@ namespace vshadersystem
             const auto& inj = opt.materialInjection.value();
             h               = xxhash64(std::string("materialInjection=1"), h);
             h               = xxhash64(inj.preamble, h);
+            h               = xxhash64(inj.postMaterialDecl, h);
             h               = xxhash64(inj.materialAddressExpr, h);
             h               = xxhash64(inj.materialIndexExpr, h);
             h               = xxhash64(inj.bindlessTextureArrayName, h);
@@ -541,6 +542,14 @@ namespace vshadersystem
                 out +=
                     "Material vshader_LoadMaterial(uint64_t addr) { return vshader_MaterialRef(addr).material; }\n\n";
             }
+        }
+
+        if (!inj.postMaterialDecl.empty())
+        {
+            out += inj.postMaterialDecl;
+            if (!out.empty() && out.back() != '\n')
+                out += "\n";
+            out += "\n";
         }
 
         // Address/index accessors (choose what the caller provided)
