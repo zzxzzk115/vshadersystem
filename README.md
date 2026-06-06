@@ -69,6 +69,7 @@ Shaders are written using structured sections.
 
 ```glsl
 [vshader]
+id       = "example/pbr"
 language = glsl
 version  = 460
 
@@ -103,10 +104,16 @@ void main() { }
 
 Required.
 
-| Key      | Description              |
-| -------- | ------------------------ |
-| language | glsl                     |
-| version  | GLSL version (e.g., 460) |
+| Key      | Description                                                        |
+| -------- | ----------------------------------------------------------------- |
+| id       | **Required.** Stable logical shader id, e.g. `id = "builtin/fxaa"`. Used as the shader's identity for variant lookup; must be unique across a library. It is no longer derived from the file name. |
+| language | glsl                                                              |
+| version  | GLSL version (e.g., 460)                                          |
+
+> Migration note: the legacy filename-stem id derivation has been removed. Every
+> shader must declare an explicit `id`. Duplicate ids within a library are a build
+> error. (When compiling raw GLSL through the C++ API without a `[vshader]`
+> section, set `BuildRequest.id` instead.)
 
 ### [keywords]
 
@@ -203,8 +210,42 @@ Usage:
   vshaderc build --webgpu --shader_root <dir> -o <output.vshweblib> [options]
   vshaderc packlib -o <output.vshlib> <in1.vshbin> <in2.vshbin> ...
   vshaderc packlib --webgpu -o <output.vshweblib> <in1.vshwebbin> <in2.vshwebbin> ...
+  vshaderc pack-glsl --root <dir> -o <output.vshglsl> [--ext .glsl ...]
   vshaderc wgsl -i <input.vshbin|input.vshwebbin|input.spv> -o <output.wgsl>
+
+build options:
+  -I <dir>               add a filesystem include directory
+  --mount <name>=<lib.vshglsl>
+                         mount a packed GLSL library under <name> in the include
+                         VFS, so `#include "<name>/<path>"` resolves to it from
+                         any source location (repeatable)
 ```
+
+## Includes & the VFS
+
+Includes are resolved against an in-memory **VFS** by their **absolute VFS path
+first** (then, as a fallback, relative to the including file's directory). This
+makes shared/library includes resolve identically from any source location
+(project shaders, generated shaders in subdirectories, etc.).
+
+A **GLSL library** (`.vshglsl`) packages a directory of `.glsl` files and is
+mounted at compile time. The mount name is prefixed onto each library file's
+relative path:
+
+```bash
+# Package builtin GLSL whose contents live under .../include (vultra/, common/, ...)
+vshaderc pack-glsl --root engine/shaders/include -o out/builtin.vshglsl
+
+# Mount at root so `#include "vultra/mesh_material.glsl"` resolves
+vshaderc build --shader_root project/shaders --mount =out/builtin.vshglsl -o out/project.vshlib
+
+# Or mount under a namespace: pack the namespace contents and mount as that name
+vshaderc pack-glsl --root engine/shaders/include/vultra -o out/vultra.vshglsl
+vshaderc build --shader_root project/shaders --mount vultra=out/vultra.vshglsl -o out/project.vshlib
+```
+
+The C++ API exposes the same via `CompileOptions::vfsMounts` (a list of
+`VfsMount{ mount, files }`) and `read_glsl_library_file()` / `write_glsl_library()`.
 
 ## WGSL Workflow
 

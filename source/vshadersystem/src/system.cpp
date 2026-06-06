@@ -1152,9 +1152,20 @@ namespace vshadersystem
 
         opt.entryPoint = entry_for_stage(meta, opt.stage);
 
+        // Shader identity is the explicit id (required). It comes from the
+        // BuildRequest override (for raw sources) or the INI-style `[vshader] id`.
+        // The legacy filename-stem derivation has been removed: ids must be stable
+        // and author-controlled (e.g. "builtin/fxaa"), independent of file location.
+        const std::string shaderId = !req.id.empty() ? req.id : meta.id;
+        if (shaderId.empty())
+            return Result<BuildResult>::err(
+                {ErrorCode::eParseError,
+                 "shader '" + req.source.virtualPath +
+                     "' is missing a required id (set BuildRequest.id or [vshader] id = \"builtin/fxaa\")"});
+
         const uint64_t buildHash    = compute_build_hash(req.source, opt, meta);
         const uint64_t sourceHash   = xxhash64(req.source.sourceText);
-        const uint64_t shaderIdHash = shader_id_hash_from_virtual_path(req.source.virtualPath);
+        const uint64_t shaderIdHash = shader_id_hash(shaderId);
 
         BuildResult out;
         out.fromCache = false;

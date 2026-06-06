@@ -14,6 +14,11 @@ namespace vshadersystem
         SourceInput    source;
         CompileOptions options;
 
+        // Optional explicit shader id override. Used when the source has no
+        // INI-style `[vshader] id = "..."` (e.g. raw GLSL provided directly).
+        // Exactly one source of id is required: this field or the metadata id.
+        std::string id;
+
         // Optional engine-wide keyword values (typically global scope), used for
         // resolving permutation keyword values and computing ShaderBinary::variantHash.
         bool               hasEngineKeywords = false;

@@ -796,6 +796,15 @@ namespace vshadersystem
                     if (is_number(val))
                         out.renderQueue = static_cast<uint32_t>(std::stoul(val));
                 }
+                else if (key == "id")
+                {
+                    // Explicit, stable logical shader id, e.g. id = "builtin/fxaa".
+                    // Quotes are optional; surrounding quotes are stripped.
+                    std::string idVal = valRaw;
+                    if (idVal.size() >= 2 && idVal.front() == '"' && idVal.back() == '"')
+                        idVal = idVal.substr(1, idVal.size() - 2);
+                    out.id = trim(idVal);
+                }
 
                 continue;
             }

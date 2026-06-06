@@ -272,4 +272,114 @@ namespace vshadersystem
 
         return Result<std::vector<uint8_t>>::err({ErrorCode::eIO, "VSHLIB entry not found."});
     }
+
+    // ------------------------------------------------------------
+    // .vshglsl - GLSL include library
+    // ------------------------------------------------------------
+    namespace
+    {
+        constexpr uint8_t  kGlslMagic[8] = {'V', 'S', 'H', 'G', 'L', 'S', 'L', 0};
+        constexpr uint32_t kGlslVersion  = 1;
+
+        void append_u32(std::vector<uint8_t>& buf, uint32_t v)
+        {
+            buf.push_back(static_cast<uint8_t>(v & 0xFFu));
+            buf.push_back(static_cast<uint8_t>((v >> 8) & 0xFFu));
+            buf.push_back(static_cast<uint8_t>((v >> 16) & 0xFFu));
+            buf.push_back(static_cast<uint8_t>((v >> 24) & 0xFFu));
+        }
+
+        void append_bytes(std::vector<uint8_t>& buf, std::string_view s)
+        {
+            buf.insert(buf.end(), s.begin(), s.end());
+        }
+
+        bool read_u32(std::span<const uint8_t> blob, size_t& pos, uint32_t& out)
+        {
+            if (pos + 4 > blob.size())
+                return false;
+            out = static_cast<uint32_t>(blob[pos]) | (static_cast<uint32_t>(blob[pos + 1]) << 8) |
+                  (static_cast<uint32_t>(blob[pos + 2]) << 16) | (static_cast<uint32_t>(blob[pos + 3]) << 24);
+            pos += 4;
+            return true;
+        }
+    } // namespace
+
+    Result<void> write_glsl_library(const std::string& filePath, const std::vector<GlslLibraryFile>& inFiles)
+    {
+        // Deterministic ordering by virtualPath.
+        std::vector<GlslLibraryFile> files = inFiles;
+        std::sort(files.begin(), files.end(), [](const GlslLibraryFile& a, const GlslLibraryFile& b) {
+            return a.virtualPath < b.virtualPath;
+        });
+
+        std::vector<uint8_t> buf;
+        buf.insert(buf.end(), kGlslMagic, kGlslMagic + sizeof(kGlslMagic));
+        append_u32(buf, kGlslVersion);
+        append_u32(buf, static_cast<uint32_t>(files.size()));
+        for (const auto& file : files)
+        {
+            if (file.virtualPath.empty())
+                return Result<void>::err({ErrorCode::eInvalidArgument, "VSHGLSL file has empty virtualPath."});
+            append_u32(buf, static_cast<uint32_t>(file.virtualPath.size()));
+            append_bytes(buf, file.virtualPath);
+            append_u32(buf, static_cast<uint32_t>(file.sourceText.size()));
+            append_bytes(buf, file.sourceText);
+        }
+
+        std::ofstream f(filePath, std::ios::binary);
+        if (!f)
+            return Result<void>::err({ErrorCode::eIO, "Failed to open output file: " + filePath});
+        return write_all(f, buf.data(), buf.size());
+    }
+
+    Result<std::vector<GlslLibraryFile>> read_glsl_library(std::span<const uint8_t> blob)
+    {
+        using R = Result<std::vector<GlslLibraryFile>>;
+        if (blob.size() < sizeof(kGlslMagic) + 8 || std::memcmp(blob.data(), kGlslMagic, sizeof(kGlslMagic)) != 0)
+            return R::err({ErrorCode::eParseError, "Not a VSHGLSL file (bad magic)."});
+
+        size_t   pos = sizeof(kGlslMagic);
+        uint32_t version = 0;
+        uint32_t count   = 0;
+        if (!read_u32(blob, pos, version) || version != kGlslVersion)
+            return R::err({ErrorCode::eParseError, "Unsupported VSHGLSL version."});
+        if (!read_u32(blob, pos, count))
+            return R::err({ErrorCode::eParseError, "Truncated VSHGLSL header."});
+
+        std::vector<GlslLibraryFile> files;
+        files.reserve(count);
+        for (uint32_t i = 0; i < count; ++i)
+        {
+            uint32_t pathLen = 0;
+            if (!read_u32(blob, pos, pathLen) || pos + pathLen > blob.size())
+                return R::err({ErrorCode::eParseError, "Truncated VSHGLSL path."});
+            GlslLibraryFile file;
+            file.virtualPath.assign(reinterpret_cast<const char*>(blob.data() + pos), pathLen);
+            pos += pathLen;
+
+            uint32_t srcLen = 0;
+            if (!read_u32(blob, pos, srcLen) || pos + srcLen > blob.size())
+                return R::err({ErrorCode::eParseError, "Truncated VSHGLSL source."});
+            file.sourceText.assign(reinterpret_cast<const char*>(blob.data() + pos), srcLen);
+            pos += srcLen;
+
+            files.push_back(std::move(file));
+        }
+        return R::ok(std::move(files));
+    }
+
+    Result<std::vector<GlslLibraryFile>> read_glsl_library_file(const std::string& filePath)
+    {
+        std::ifstream f(filePath, std::ios::binary | std::ios::ate);
+        if (!f)
+            return Result<std::vector<GlslLibraryFile>>::err({ErrorCode::eIO, "Failed to open file: " + filePath});
+        const auto size = static_cast<size_t>(f.tellg());
+        f.seekg(0);
+        std::vector<uint8_t> bytes(size);
+        f.read(reinterpret_cast<char*>(bytes.data()), static_cast<std::streamsize>(size));
+        if (!f)
+            return Result<std::vector<GlslLibraryFile>>::err({ErrorCode::eIO, "Failed to read file: " + filePath});
+        return read_glsl_library(bytes);
+    }
 } // namespace vshadersystem

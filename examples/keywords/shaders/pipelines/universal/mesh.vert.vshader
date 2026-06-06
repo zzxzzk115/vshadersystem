@@ -1,4 +1,5 @@
 [vshader]
+id       = "universal/mesh.vert"
 language = glsl
 version  = 460
 

@@ -270,6 +270,7 @@ static bool test_single(const std::string& src, ShaderStage stage)
     BuildRequest req;
 
     req.source.virtualPath        = SHADER_NAME;
+    req.id                        = "example/single";
     req.source.sourceText         = src;
     req.options.includeDirs       = {"shaders/include"};
     req.options.stage             = stage;
@@ -306,6 +307,7 @@ static bool test_multiple(const std::string& src)
     BuildRequest req;
 
     req.source.virtualPath  = SHADER_NAME;
+    req.id                  = "example/multi";
     req.source.sourceText   = src;
     req.options.includeDirs = {"shaders/include"};
     // We don't set stage here, to test build_multiple_shaders' ability to detect stages from markers.
@@ -349,6 +351,7 @@ static bool test_virtual_include()
 
     BuildRequest req;
     req.source.virtualPath = "generated/material_graph/test.frag.vshader";
+    req.id                 = "example/virtual_include";
     req.source.sourceText = R"(#version 460
 #include "include/test/constants.glsl"
 layout(location = 0) out vec4 FragColor;

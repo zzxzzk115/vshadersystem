@@ -1205,6 +1205,7 @@ static int cmd_build(int argc, char** argv)
     int                      dumpContext     = 5;
     std::string              emitIntermediateDir;
     bool                     emitAlways = false;
+    std::vector<VfsMount>    mounts; // --mount <name>=<file.vshglsl>
 
     for (int i = 2; i < argc; ++i)
     {
@@ -1221,6 +1222,30 @@ static int cmd_build(int argc, char** argv)
         else if (a == "-I" && i + 1 < argc)
         {
             includeDirs.push_back(normalize_path_slashes(argv[++i]));
+        }
+        else if (a == "--mount" && i + 1 < argc)
+        {
+            // --mount <name>=<file.vshglsl> : mount a packed GLSL library at <name>.
+            const std::string spec = argv[++i];
+            const size_t      eq   = spec.find('=');
+            if (eq == std::string::npos)
+            {
+                log_error("--mount requires <name>=<file.vshglsl>");
+                return 1;
+            }
+            const std::string mountName = spec.substr(0, eq);
+            const std::string libPath   = spec.substr(eq + 1);
+            auto              libR      = read_glsl_library_file(libPath);
+            if (!libR.isOk())
+            {
+                log_error("--mount: failed to read glsl library '" + libPath + "': " + libR.error().message);
+                return 1;
+            }
+            VfsMount m;
+            m.mount = mountName;
+            for (auto& file : libR.value())
+                m.files.push_back(VirtualIncludeFile {std::move(file.virtualPath), std::move(file.sourceText)});
+            mounts.push_back(std::move(m));
         }
         else if ((a == "--material-mode" || a.rfind("--material-mode=", 0) == 0))
         {
@@ -1427,6 +1452,20 @@ static int cmd_build(int argc, char** argv)
     size_t      pruned     = 0;
     std::string firstError = {};
 
+    // Conflict detection: each explicit shader id must be unique across the
+    // library. Maps shaderIdHash -> the source file that first claimed it.
+    std::unordered_map<uint64_t, std::string> idOwner;
+    const auto registerShaderId = [&](uint64_t idHash, const std::string& vpath) -> bool {
+        auto [it, inserted] = idOwner.emplace(idHash, vpath);
+        if (!inserted && it->second != vpath)
+        {
+            firstError = "build: duplicate shader id (hash " + std::to_string(idHash) + ") declared by '" +
+                         it->second + "' and '" + vpath + "' - shader ids must be unique";
+            return false;
+        }
+        return true;
+    };
+
     size_t shaderIndex = 0;
 
     for (const auto& shaderPathAbs : shaderFiles)
@@ -1585,6 +1624,7 @@ static int cmd_build(int argc, char** argv)
             req.source.virtualPath  = virtualPath;
             req.source.sourceText   = src;
             req.options.includeDirs = includeDirs;
+            req.options.vfsMounts   = mounts;
             req.options.defines     = defines;
 
             // Diagnostics
@@ -1648,6 +1688,9 @@ static int cmd_build(int argc, char** argv)
 
                 ShaderBinary bin = br.value().binary;
 
+                if (!registerShaderId(bin.shaderIdHash, virtualPath))
+                    break;
+
                 if (webgpu)
                 {
                     auto wg = spirv_to_wgsl(bin.spirv);
@@ -1704,6 +1747,9 @@ static int cmd_build(int argc, char** argv)
                 for (auto& [stage2, br2] : mr.value())
                 {
                     ShaderBinary bin = br2.binary;
+
+                    if (!registerShaderId(bin.shaderIdHash, virtualPath))
+                        break;
 
                     if (webgpu)
                     {
@@ -1805,6 +1851,91 @@ static int cmd_build(int argc, char** argv)
 }
 
 // ============================================================
+// pack-glsl: package a directory of GLSL into a mountable .vshglsl library
+//   pack-glsl --root <dir> -o <out.vshglsl> [--ext .glsl] [--ext .h] ...
+// Files are stored by their path relative to <dir> (forward slashes).
+// ============================================================
+static int cmd_pack_glsl(int argc, char** argv)
+{
+    std::string              root;
+    std::string              outPath;
+    std::vector<std::string> exts;
+
+    for (int i = 2; i < argc; ++i)
+    {
+        std::string a = argv[i];
+        if (a == "--root" && i + 1 < argc)
+            root = argv[++i];
+        else if ((a == "-o" || a == "--output") && i + 1 < argc)
+            outPath = argv[++i];
+        else if (a == "--ext" && i + 1 < argc)
+            exts.push_back(argv[++i]);
+        else
+        {
+            log_error("pack-glsl: unknown argument: " + a);
+            return 1;
+        }
+    }
+
+    if (root.empty() || outPath.empty())
+    {
+        log_error("pack-glsl requires --root <dir> and -o <out.vshglsl>");
+        return 1;
+    }
+    if (exts.empty())
+        exts = {".glsl"};
+
+    const std::filesystem::path rootPath(root);
+    std::error_code             ec;
+    if (!std::filesystem::is_directory(rootPath, ec))
+    {
+        log_error("pack-glsl: --root is not a directory: " + root);
+        return 1;
+    }
+
+    std::vector<GlslLibraryFile> files;
+    for (auto it = std::filesystem::recursive_directory_iterator(
+             rootPath, std::filesystem::directory_options::skip_permission_denied, ec);
+         !ec && it != std::filesystem::recursive_directory_iterator {};
+         it.increment(ec))
+    {
+        if (!it->is_regular_file(ec))
+            continue;
+        const auto& p   = it->path();
+        const auto  ext = p.extension().string();
+        if (std::find(exts.begin(), exts.end(), ext) == exts.end())
+            continue;
+
+        auto rel = std::filesystem::relative(p, rootPath, ec);
+        if (ec || rel.empty())
+            continue;
+
+        std::ifstream f(p, std::ios::binary);
+        if (!f)
+        {
+            log_error("pack-glsl: failed to read " + p.generic_string());
+            return 1;
+        }
+        std::stringstream ss;
+        ss << f.rdbuf();
+
+        GlslLibraryFile entry;
+        entry.virtualPath = normalize_path_slashes(rel.generic_string());
+        entry.sourceText  = ss.str();
+        files.push_back(std::move(entry));
+    }
+
+    auto w = write_glsl_library(outPath, files);
+    if (!w.isOk())
+    {
+        log_error("pack-glsl: write failed: " + w.error().message);
+        return 1;
+    }
+    log_info("pack-glsl: OK -> " + outPath + " files=" + std::to_string(files.size()));
+    return 0;
+}
+
+// ============================================================
 // main dispatch
 // ============================================================
 
@@ -1832,6 +1963,9 @@ int run_vshaderc(int argc, char** argv)
 
     if (cmd == "packlib")
         return cmd_packlib(argc, argv);
+
+    if (cmd == "pack-glsl")
+        return cmd_pack_glsl(argc, argv);
 
     if (cmd == "wgsl")
         return cmd_wgsl(argc, argv);

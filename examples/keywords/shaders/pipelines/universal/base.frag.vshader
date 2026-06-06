@@ -1,4 +1,5 @@
 [vshader]
+id       = "universal/base.frag"
 language = glsl
 version  = 460
 

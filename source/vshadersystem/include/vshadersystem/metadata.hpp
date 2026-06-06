@@ -19,6 +19,11 @@ namespace vshadersystem
         // Used by ini-style shaders to auto-generate the Material struct.
         std::string generatedPreamble;
 
+        // Explicit, stable logical shader id (from `[vshader] id = "..."`).
+        // Required for INI-style shaders: the build uses this as the shader's
+        // identity for variant lookup instead of deriving it from the file stem.
+        std::string id;
+
         bool           hasMaterialDecl    = false;
         std::string    materialStructName = "Material";
         ShaderLanguage language           = ShaderLanguage::eAuto;

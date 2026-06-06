@@ -82,4 +82,28 @@ namespace vshadersystem
 
     // Find a shader blob by (keyHash, stage). Returns empty span if not found.
     Result<std::vector<uint8_t>> extract_vshlib_blob(const ShaderLibrary& lib, uint64_t keyHash, ShaderStage stage);
+
+    // ------------------------------------------------------------
+    // .vshglsl - GLSL include library (mountable into the compile VFS)
+    //
+    // A deterministic container of GLSL source files addressed by a relative
+    // virtual path. Packaged with `vshaderc pack-glsl` and mounted at compile
+    // time (`--mount <name>=<file.vshglsl>`), so `#include "<name>/<path>"`
+    // resolves against the library from any source location.
+    //
+    // File format (version 1):
+    //   magic[8]      : "VSHGLSL\0"
+    //   version u32   : 1
+    //   count   u32   : number of files
+    //   count * { pathLen u32, path bytes, srcLen u32, src bytes }
+    // ------------------------------------------------------------
+    struct GlslLibraryFile
+    {
+        std::string virtualPath; // relative to the mount point, e.g. "common/pbr.glsl"
+        std::string sourceText;
+    };
+
+    Result<void> write_glsl_library(const std::string& filePath, const std::vector<GlslLibraryFile>& files);
+    Result<std::vector<GlslLibraryFile>> read_glsl_library_file(const std::string& filePath);
+    Result<std::vector<GlslLibraryFile>> read_glsl_library(std::span<const uint8_t> blob);
 } // namespace vshadersystem

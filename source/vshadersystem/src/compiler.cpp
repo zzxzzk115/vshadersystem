@@ -428,7 +428,8 @@ namespace vshadersystem
         public:
             RecordingIncluder(std::filesystem::path              rootFilePath,
                               std::vector<std::string>           extraIncludeDirs,
-                              std::vector<VirtualIncludeFile>     virtualIncludeFiles) :
+                              std::vector<VirtualIncludeFile>     virtualIncludeFiles,
+                              const std::vector<VfsMount>&        vfsMounts) :
                 m_RootFilePath(std::move(rootFilePath))
             {
                 for (auto& file : virtualIncludeFiles)
@@ -436,6 +437,21 @@ namespace vshadersystem
                     if (file.virtualPath.empty())
                         continue;
                     m_VirtualFiles[normalize_virtual_path(std::move(file.virtualPath))] = std::move(file.sourceText);
+                }
+
+                // Flatten VFS mounts into the virtual file table by their absolute
+                // VFS path: "<mount>/<file.virtualPath>" (normalized). These are the
+                // authoritative include paths used from any source location.
+                for (const auto& m : vfsMounts)
+                {
+                    for (const auto& file : m.files)
+                    {
+                        if (file.virtualPath.empty())
+                            continue;
+                        const auto absolute =
+                            m.mount.empty() ? file.virtualPath : (m.mount + "/" + file.virtualPath);
+                        m_VirtualFiles[normalize_virtual_path(absolute)] = file.sourceText;
+                    }
                 }
 
                 // Root file directory (highest priority)
@@ -516,6 +532,15 @@ namespace vshadersystem
                 if (req.empty())
                     return nullptr;
 
+                // VFS semantics: the include path is an ABSOLUTE VFS path. Match it
+                // exactly first so that e.g. `#include "vultra/mesh_material.glsl"`
+                // resolves identically from any source location (root, generated
+                // subdir, or a mounted library).
+                if (auto it = m_VirtualFiles.find(req); it != m_VirtualFiles.end())
+                    return &*it;
+
+                // Fallback: resolve relative to the including file's directory (a
+                // convenience for co-located helper includes).
                 if (includerName && *includerName)
                 {
                     const std::filesystem::path inc(normalize_virtual_path(includerName));
@@ -527,9 +552,6 @@ namespace vshadersystem
                             return &*it;
                     }
                 }
-
-                if (auto it = m_VirtualFiles.find(req); it != m_VirtualFiles.end())
-                    return &*it;
 
                 return nullptr;
             }
@@ -647,7 +669,8 @@ namespace vshadersystem
         // Include + dependency recording.
         RecordingIncluder includer(std::filesystem::path(input.virtualPath),
                                    opt.includeDirs,
-                                   opt.virtualIncludeFiles);
+                                   opt.virtualIncludeFiles,
+                                   opt.vfsMounts);
 
         // Messages: keep Vulkan/SPIR-V rules. Cascading errors improves logs.
         constexpr auto kMessages =

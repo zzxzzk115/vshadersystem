@@ -23,6 +23,18 @@ namespace vshadersystem
         std::string sourceText;
     };
 
+    // A named VFS mount: a set of GLSL files exposed under a mount point so that
+    // `#include "<mount>/<path>"` resolves to them regardless of the including
+    // file's own location. This is the clean, unambiguous way to share builtin /
+    // library GLSL with project and generated shaders. Files are addressed by the
+    // ABSOLUTE VFS path `<mount>/<file.virtualPath>` (a leading-slash-free,
+    // forward-slash path). An empty mount maps files at the VFS root.
+    struct VfsMount
+    {
+        std::string                     mount; // e.g. "vultra" (or "" for root)
+        std::vector<VirtualIncludeFile> files; // file.virtualPath is relative to `mount`
+    };
+
     struct CompileOptions
     {
         ShaderStage stage = ShaderStage::eUnknown;
@@ -47,6 +59,11 @@ namespace vshadersystem
         std::vector<Define>             defines;
         std::vector<std::string>        includeDirs;
         std::vector<VirtualIncludeFile> virtualIncludeFiles;
+
+        // VFS mounts (see VfsMount). Includes resolve against these by ABSOLUTE
+        // VFS path first (mount-rooted), so `#include "vultra/mesh_material.glsl"`
+        // works from any source location. Relative-to-includer is only a fallback.
+        std::vector<VfsMount> vfsMounts;
 
         // --------------------------------------------------------------------
         // MaterialAccessInjection (tool-layer contract)
