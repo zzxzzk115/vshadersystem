@@ -70,6 +70,7 @@ static void print_reflection(const ShaderBinary& bin)
 int main()
 {
     const std::string shaderSrc = R"([vshader]
+id       = "example/runtime_ssbo_access"
 language = glsl
 version = 460
 
