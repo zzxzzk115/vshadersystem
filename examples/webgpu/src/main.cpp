@@ -104,6 +104,7 @@ int main()
     // A richer INI-style shader for WebGPU path validation.
     // Includes: UBO usage + texture sampling + vertex/fragment pipeline stages.
     const std::string shaderSrc = R"([vshader]
+id       = "example/webgpu_rich_demo"
 language = glsl
 version = 450
 
