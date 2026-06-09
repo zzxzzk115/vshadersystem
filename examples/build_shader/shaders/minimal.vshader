@@ -79,6 +79,24 @@ void main()
     outColor = vec4(baseColor.rgb, 1.0);
 }
 
+[geometry]
+layout(triangles) in;
+layout(triangle_strip, max_vertices = 3) out;
+
+layout(location = 0) in vec2 inUV[];
+layout(location = 0) out vec2 outUV;
+
+void main()
+{
+    for (int i = 0; i < 3; ++i)
+    {
+        outUV       = inUV[i];
+        gl_Position = gl_in[i].gl_Position;
+        EmitVertex();
+    }
+    EndPrimitive();
+}
+
 [compute]
 #extension GL_EXT_scalar_block_layout : require
 

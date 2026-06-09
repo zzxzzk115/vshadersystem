@@ -38,6 +38,7 @@ namespace vshadersystem
         // Defaults to "main" for all stages.
         std::string entryVert = "main";
         std::string entryFrag = "main";
+        std::string entryGeom = "main";
         std::string entryComp = "main";
         std::string entryTask = "main";
         std::string entryMesh = "main";

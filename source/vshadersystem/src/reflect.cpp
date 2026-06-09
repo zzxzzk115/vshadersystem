@@ -29,6 +29,8 @@ namespace vshadersystem
                 return eStageVert;
             case spv::ExecutionModelFragment:
                 return eStageFrag;
+            case spv::ExecutionModelGeometry:
+                return eStageGeom;
             case spv::ExecutionModelGLCompute:
                 return eStageComp;
 

@@ -44,7 +44,22 @@ static void log_verbose(const std::string& s)
         VSS_LOG_TAG_DEBUG("vshaderc", "%s", s.c_str());
 }
 
+static void log_warn(const std::string& s) { VSS_LOG_TAG_WARN("vshaderc", "%s", s.c_str()); }
+
 static void log_error(const std::string& s) { VSS_LOG_TAG_ERROR("vshaderc", "%s", s.c_str()); }
+
+// Geometry shaders cannot be lowered to WGSL (WebGPU has no geometry stage). When
+// targeting WebGPU we warn and skip WGSL emission for the geometry stage instead of
+// failing the build, leaving bin.wgsl empty (the SPIR-V is still written for desktop).
+static bool wgsl_skip_geometry(const ShaderBinary& bin)
+{
+    if (bin.stage == ShaderStage::eGeom)
+    {
+        log_warn("webgpu: geometry stage unsupported on WebGPU target; skipping WGSL emission");
+        return true;
+    }
+    return false;
+}
 
 // ============================================================
 // Usage
@@ -65,7 +80,7 @@ Usage:
   vshaderc wgsl -i <input.vshbin|input.vshwebbin|input.spv> -o <output.wgsl>
 
 Stages:
-  vert, frag, comp, task, mesh, rgen, rmiss, rchit, rahit, rint
+  vert, frag, geom, comp, task, mesh, rgen, rmiss, rchit, rahit, rint
 
 Options (compile):
   -I <dir>               Add include directory (repeatable)
@@ -249,6 +264,11 @@ static bool parse_stage(const std::string& s, ShaderStage& out)
         out = ShaderStage::eFrag;
         return true;
     }
+    if (s == "geom")
+    {
+        out = ShaderStage::eGeom;
+        return true;
+    }
     if (s == "comp")
     {
         out = ShaderStage::eComp;
@@ -397,6 +417,9 @@ static ShaderStage stage_from_filename(const std::string& name)
 
     if (name.ends_with(".frag"))
         return ShaderStage::eFrag;
+
+    if (name.ends_with(".geom"))
+        return ShaderStage::eGeom;
 
     if (name.ends_with(".comp"))
         return ShaderStage::eComp;
@@ -966,7 +989,7 @@ static int cmd_compile(int argc, char** argv)
         }
 
         ShaderBinary bin = r.value().binary;
-        if (webgpu)
+        if (webgpu && !wgsl_skip_geometry(bin))
         {
             auto wg = spirv_to_wgsl(bin.spirv);
             if (!wg.isOk())
@@ -1019,6 +1042,9 @@ static int cmd_compile(int argc, char** argv)
                 case ShaderStage::eFrag:
                     ext = "frag";
                     break;
+                case ShaderStage::eGeom:
+                    ext = "geom";
+                    break;
                 case ShaderStage::eComp:
                     ext = "comp";
                     break;
@@ -1052,7 +1078,7 @@ static int cmd_compile(int argc, char** argv)
             auto outFile = base.string() + "." + ext + (webgpu ? ".vshwebbin" : ".vshbin");
 
             ShaderBinary bin = result.binary;
-            if (webgpu)
+            if (webgpu && !wgsl_skip_geometry(bin))
             {
                 auto wg = spirv_to_wgsl(bin.spirv);
                 if (!wg.isOk())
@@ -1691,7 +1717,7 @@ static int cmd_build(int argc, char** argv)
                 if (!registerShaderId(bin.shaderIdHash, virtualPath))
                     break;
 
-                if (webgpu)
+                if (webgpu && !wgsl_skip_geometry(bin))
                 {
                     auto wg = spirv_to_wgsl(bin.spirv);
                     if (!wg.isOk())
@@ -1751,7 +1777,7 @@ static int cmd_build(int argc, char** argv)
                     if (!registerShaderId(bin.shaderIdHash, virtualPath))
                         break;
 
-                    if (webgpu)
+                    if (webgpu && !wgsl_skip_geometry(bin))
                     {
                         auto wg = spirv_to_wgsl(bin.spirv);
                         if (!wg.isOk())

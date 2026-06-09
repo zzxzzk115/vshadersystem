@@ -70,6 +70,8 @@ namespace vshadersystem
                 return meta.entryVert;
             case ShaderStage::eFrag:
                 return meta.entryFrag;
+            case ShaderStage::eGeom:
+                return meta.entryGeom;
             case ShaderStage::eComp:
                 return meta.entryComp;
             case ShaderStage::eTask:
@@ -111,6 +113,11 @@ namespace vshadersystem
         if (sectionLower == "frag" || sectionLower == "fragment")
         {
             out = ShaderStage::eFrag;
+            return true;
+        }
+        if (sectionLower == "geom" || sectionLower == "geometry")
+        {
+            out = ShaderStage::eGeom;
             return true;
         }
         if (sectionLower == "comp" || sectionLower == "compute")
@@ -419,6 +426,7 @@ namespace vshadersystem
 
             m += "entryVert=" + meta.entryVert + "\n";
             m += "entryFrag=" + meta.entryFrag + "\n";
+            m += "entryGeom=" + meta.entryGeom + "\n";
             m += "entryComp=" + meta.entryComp + "\n";
             m += "entryTask=" + meta.entryTask + "\n";
             m += "entryMesh=" + meta.entryMesh + "\n";
@@ -1437,6 +1445,7 @@ namespace vshadersystem
         const ShaderStage stages[] = {
             ShaderStage::eVert,
             ShaderStage::eFrag,
+            ShaderStage::eGeom,
             ShaderStage::eComp,
             ShaderStage::eTask,
             ShaderStage::eMesh,

@@ -46,6 +46,8 @@ namespace vshadersystem
                 return EShLangVertex;
             case ShaderStage::eFrag:
                 return EShLangFragment;
+            case ShaderStage::eGeom:
+                return EShLangGeometry;
             case ShaderStage::eComp:
                 return EShLangCompute;
             case ShaderStage::eTask:
@@ -75,6 +77,8 @@ namespace vshadersystem
                 return "vert";
             case ShaderStage::eFrag:
                 return "frag";
+            case ShaderStage::eGeom:
+                return "geom";
             case ShaderStage::eComp:
                 return "comp";
             case ShaderStage::eTask:

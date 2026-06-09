@@ -14,6 +14,7 @@ namespace vshadersystem
         eUnknown = 0,
         eVert,
         eFrag,
+        eGeom,
         eComp,
         eTask,
         eMesh,
@@ -31,14 +32,15 @@ namespace vshadersystem
         eStateUnknown = 0,
         eStageVert    = 1 << 0,
         eStageFrag    = 1 << 1,
-        eStageComp    = 1 << 2,
-        eStageTask    = 1 << 3,
-        eStageMesh    = 1 << 4,
-        eStageRgen    = 1 << 5,
-        eStageRmiss   = 1 << 6,
-        eStageRchit   = 1 << 7,
-        eStageRahit   = 1 << 8,
-        eStageRint    = 1 << 9
+        eStageGeom    = 1 << 2,
+        eStageComp    = 1 << 3,
+        eStageTask    = 1 << 4,
+        eStageMesh    = 1 << 5,
+        eStageRgen    = 1 << 6,
+        eStageRmiss   = 1 << 7,
+        eStageRchit   = 1 << 8,
+        eStageRahit   = 1 << 9,
+        eStageRint    = 1 << 10
     };
 
     // ------------------------------------------------------------

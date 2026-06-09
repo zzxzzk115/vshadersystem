@@ -42,6 +42,8 @@ static const char* stage_name(ShaderStage s)
             return "VERT";
         case ShaderStage::eFrag:
             return "FRAG";
+        case ShaderStage::eGeom:
+            return "GEOM";
         case ShaderStage::eComp:
             return "COMP";
         case ShaderStage::eMesh:
@@ -61,6 +63,8 @@ static std::string stage_ext(ShaderStage s)
             return "vert";
         case ShaderStage::eFrag:
             return "frag";
+        case ShaderStage::eGeom:
+            return "geom";
         case ShaderStage::eComp:
             return "comp";
         case ShaderStage::eMesh:
@@ -392,6 +396,65 @@ void main()
     return write_read_print(built.value(), "virtual_include.frag.vshbin");
 }
 
+static bool test_geometry()
+{
+    std::cout << "\n=== GEOMETRY ===\n";
+
+    // Raw GLSL (non-INI) source goes through the explicit compile + build path,
+    // mirroring test_virtual_include (build_single_shader expects INI-style sources).
+    BuildRequest req;
+    req.source.virtualPath = "example/passthrough.geom.vshader";
+    req.id                 = "example/geometry";
+    req.source.sourceText  = R"(#version 460
+layout(triangles) in;
+layout(triangle_strip, max_vertices = 3) out;
+
+layout(location = 0) in vec3 v_Color[];
+layout(location = 0) out vec3 g_Color;
+
+void main()
+{
+    for (int i = 0; i < 3; ++i)
+    {
+        g_Color     = v_Color[i];
+        gl_Position = gl_in[i].gl_Position;
+        EmitVertex();
+    }
+    EndPrimitive();
+}
+)";
+    req.options.stage    = ShaderStage::eGeom;
+    req.options.language = ShaderLanguage::eGLSL;
+
+    auto compiled = compile_glsl_to_spirv(req.source, req.options);
+    if (!compiled.isOk())
+    {
+        std::cerr << "Failed to compile geometry shader: " << compiled.error().message << "\n";
+        return false;
+    }
+
+    if (compiled.value().spirv.empty())
+    {
+        std::cerr << "Geometry shader produced empty SPIR-V.\n";
+        return false;
+    }
+
+    auto built = build_from_spirv(compiled.value().spirv, ShaderStage::eGeom);
+    if (!built.isOk())
+    {
+        std::cerr << "Failed to build geometry shader binary: " << built.error().message << "\n";
+        return false;
+    }
+
+    if (built.value().stage != ShaderStage::eGeom)
+    {
+        std::cerr << "Geometry shader binary has wrong stage.\n";
+        return false;
+    }
+
+    return write_read_print(built.value(), "geometry.geom.vshbin");
+}
+
 int main()
 {
     auto src = readFile(SHADER_DIR SHADER_NAME);
@@ -410,6 +473,11 @@ int main()
     }
 
     if (!test_single(src, ShaderStage::eComp))
+    {
+        return 1;
+    }
+
+    if (!test_geometry())
     {
         return 1;
     }
