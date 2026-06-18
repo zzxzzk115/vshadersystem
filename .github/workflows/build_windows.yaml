@@ -45,6 +45,9 @@ jobs:
             }
           }
 
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
       - name: Configure
         run: xmake f -m release -p windows -a x64 --vs=2022 --vs_toolset=14.29 --policies=build.ccache:y -y
 

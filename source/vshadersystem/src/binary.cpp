@@ -11,7 +11,7 @@
 namespace vshadersystem
 {
     static constexpr uint8_t  kMagic[8] = {'V', 'S', 'H', 'B', 'I', 'N', 0, 0};
-    static constexpr uint32_t kVersion  = 5;
+    static constexpr uint32_t kVersion  = 6;
 
     static inline void write_u32(std::vector<uint8_t>& out, uint32_t v)
     {
@@ -110,6 +110,7 @@ namespace vshadersystem
             write_u8(out, static_cast<uint8_t>(d.access));
             write_u32(out, d.stageFlags);
             write_u8(out, static_cast<uint8_t>(d.runtimeSized ? 1 : 0));
+            write_u8(out, static_cast<uint8_t>(d.textureType)); // v6+
         }
 
         write_u32(out, static_cast<uint32_t>(r.blocks.size()));
@@ -195,6 +196,15 @@ namespace vshadersystem
                 return Result<ShaderReflection>::err(
                     {ErrorCode::eDeserializeError, "REFL: failed to read descriptor runtime sized flag."});
             d.runtimeSized = (runtimeSized != 0);
+
+            if (version >= 6)
+            {
+                uint8_t textureType = 0;
+                if (!read_u8(p, e, textureType))
+                    return Result<ShaderReflection>::err(
+                        {ErrorCode::eDeserializeError, "REFL: failed to read descriptor texture type."});
+                d.textureType = static_cast<TextureType>(textureType);
+            }
 
             r.descriptors.push_back(std::move(d));
         }

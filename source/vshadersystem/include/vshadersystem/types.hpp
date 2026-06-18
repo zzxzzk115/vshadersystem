@@ -281,6 +281,11 @@ namespace vshadersystem
         ShaderStageFlags stageFlags = 0;
 
         bool runtimeSized = false;
+
+        // Texture view dimension for image descriptors (2D/Cube/3D/2DArray). Needed by backends that
+        // must declare the dimension in the bind-group layout (e.g. WebGPU samplerCube). eUnknown for
+        // non-image descriptors.
+        TextureType textureType = TextureType::eUnknown;
     };
 
     struct BlockMember

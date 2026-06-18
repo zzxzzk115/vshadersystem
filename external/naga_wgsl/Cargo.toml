@@ -1,0 +1,16 @@
+[package]
+name = "naga_wgsl"
+version = "0.1.0"
+edition = "2021"
+description = "Thin C ABI wrapper around naga's SPIR-V -> WGSL conversion for vshadersystem's cook"
+publish = false
+
+[lib]
+name = "naga_wgsl"
+crate-type = ["staticlib"]
+
+[dependencies]
+naga = { version = "29", features = ["spv-in", "wgsl-out"] }
+
+[profile.release]
+opt-level = 2

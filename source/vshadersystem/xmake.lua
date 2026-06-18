@@ -19,8 +19,13 @@ target("vshadersystem")
 
 	add_packages("glslang", "spirv-cross", "xxhash", {public = true})
 
-	add_deps("tint")
-	add_defines("VSHADERSYSTEM_ENABLE_TINT=1", {public = true})
+	-- naga (SPIR-V -> WGSL) is a host-only cook dependency built via cargo. Android/WASM build only the
+	-- runtime library (no cooking), so they skip naga and the Rust toolchain entirely (wgsl.cpp compiles
+	-- a stub there). See source/vshadersystem/src/wgsl.cpp.
+	if not is_plat("android", "wasm") then
+		add_deps("naga_wgsl")
+		add_defines("VSHADERSYSTEM_ENABLE_NAGA=1")
+	end
 
 	-- set target directory
     set_targetdir("$(builddir)/$(plat)/$(arch)/$(mode)/vshadersystem")

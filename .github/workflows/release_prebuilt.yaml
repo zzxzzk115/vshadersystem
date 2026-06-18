@@ -54,6 +54,22 @@ jobs:
             plat: windows
             arch: x64
             vs: "2022"
+            vs_toolset: "14.44"
+            runtime: MD
+            artifact_suffix: windows-x64-msvc-14.44-md
+            android: false
+          - os: windows-latest
+            plat: windows
+            arch: x64
+            vs: "2022"
+            vs_toolset: "14.44"
+            runtime: MT
+            artifact_suffix: windows-x64-msvc-14.44-mt
+            android: false
+          - os: windows-latest
+            plat: windows
+            arch: x64
+            vs: "2022"
             vs_toolset: latest
             runtime: MD
             artifact_suffix: windows-x64-msvc-latest-md
@@ -105,6 +121,12 @@ jobs:
           xmake-version: latest
           actions-cache-folder: ".xmake-cache"
           build-cache: true
+
+      # naga (SPIR-V -> WGSL cook) is built via cargo on host platforms only. Android/WASM build the
+      # runtime-only library and skip it.
+      - name: Setup Rust
+        if: ${{ !matrix.android && matrix.plat != 'wasm' }}
+        uses: dtolnay/rust-toolchain@stable
 
       - name: Setup MSVC Dev Cmd (Windows pinned)
         if: ${{ !matrix.android && matrix.plat == 'windows' && matrix.vs_toolset != 'latest' }}

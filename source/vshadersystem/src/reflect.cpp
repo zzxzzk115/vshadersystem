@@ -161,6 +161,28 @@ namespace vshadersystem
                     }
                 }
 
+                // Texture view dimension for image descriptors (also valid for descriptor arrays - the
+                // image info lives on the array type's basetype in spirv_cross).
+                if (kind == DescriptorKind::eCombinedImageSampler || kind == DescriptorKind::eSampledImage ||
+                    kind == DescriptorKind::eStorageImage)
+                {
+                    switch (type.image.dim)
+                    {
+                        case spv::DimCube:
+                            b.textureType = TextureType::eTexCube;
+                            break;
+                        case spv::Dim2D:
+                            b.textureType = type.image.arrayed ? TextureType::eTex2DArray : TextureType::eTex2D;
+                            break;
+                        case spv::Dim3D:
+                            b.textureType = TextureType::eTex3D;
+                            break;
+                        default:
+                            b.textureType = TextureType::eUnknown;
+                            break;
+                    }
+                }
+
                 out.descriptors.push_back(b);
             };
 

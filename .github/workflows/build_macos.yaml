@@ -20,6 +20,9 @@ jobs:
           actions-cache-folder: ".xmake-cache"
           build-cache: true
 
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
       - name: Cache Build
         run: xmake f --policies=build.ccache:y -y
 
