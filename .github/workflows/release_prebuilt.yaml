@@ -227,8 +227,12 @@ jobs:
         if: ${{ matrix.android && matrix.arch == 'arm64-v8a' }}
         run: xmake f -m release -p android --ndk="${ANDROID_SDK_ROOT}/ndk/30.0.14904198" --vshadersystem_build_examples=n --policies=build.ccache:y -y
 
+      - name: Configure (Linux arm64 cross)
+        if: ${{ !matrix.android && matrix.plat == 'linux' && matrix.arch == 'arm64' }}
+        run: xmake f -m release -p linux -a arm64 --toolchain=cross --cross=aarch64-linux-gnu- --vshadersystem_build_examples=n --policies=build.ccache:y -y
+
       - name: Configure (Desktop)
-        if: ${{ !matrix.android && matrix.plat != 'wasm' && !(matrix.plat == 'windows' && matrix.arch == 'x64') && !(matrix.plat == 'linux' && matrix.arch == 'x86_64') && !(matrix.plat == 'macosx' && matrix.arch == 'arm64') }}
+        if: ${{ !matrix.android && matrix.plat != 'wasm' && !(matrix.plat == 'windows' && matrix.arch == 'x64') && !(matrix.plat == 'linux' && matrix.arch == 'x86_64') && !(matrix.plat == 'linux' && matrix.arch == 'arm64') && !(matrix.plat == 'macosx' && matrix.arch == 'arm64') }}
         run: xmake f -m release -p ${{ matrix.plat }} -a ${{ matrix.arch }} --vshadersystem_build_examples=n --policies=build.ccache:y -y
 
       - name: Configure (Android)
