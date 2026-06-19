@@ -53,9 +53,13 @@ target("naga_wgsl")
             if rustupbin then
                 os.vrunv(rustupbin, {"target", "add", triple})
             end
-            os.vrunv(cargobin, {"build", "--release", "--target", triple}, {curdir = os.scriptdir()})
+            -- --lib: build ONLY the staticlib that vshaderc links. Building the probe bin (or tests)
+            -- would require linking an executable, which fails under cross-compile (e.g. linux arm64) where
+            -- only the host linker is available -> "incompatible with elf64-x86-64". The staticlib is just
+            -- archived, so it cross-builds fine.
+            os.vrunv(cargobin, {"build", "--release", "--lib", "--target", triple}, {curdir = os.scriptdir()})
         else
-            os.vrunv(cargobin, {"build", "--release"}, {curdir = os.scriptdir()})
+            os.vrunv(cargobin, {"build", "--release", "--lib"}, {curdir = os.scriptdir()})
         end
     end)
 
