@@ -63,8 +63,20 @@ fn write_out(out: *mut *mut c_char, s: &str) {
 }
 
 fn convert(spirv_bytes: &[u8]) -> Result<String, String> {
+    // naga's SPIR-V reader cannot read glslang's combined image samplers: it only builds sampled images
+    // from OpSampledImage (separate texture + sampler), whereas glslang emits an OpLoad of an
+    // OpTypeSampledImage variable and samples that directly -> InvalidId. Split combined samplers into
+    // separate texture+sampler first. The splitter appends the sampler at binding+1, which matches how
+    // the RHI splits a combined-image-sampler descriptor (texture b, sampler b+1), so no reflection or
+    // bind-group changes are needed. This is a no-op for shaders that already use separate samplers.
+    let words = spirv_webgpu_transform::u8_slice_to_u32_vec(spirv_bytes);
+    let mut corrections: Option<spirv_webgpu_transform::CorrectionMap> = None;
+    let words = spirv_webgpu_transform::combimgsampsplitter(&words, &mut corrections)
+        .map_err(|_| "spirv-webgpu-transform: combimgsampsplitter failed".to_string())?;
+    let spirv_bytes = spirv_webgpu_transform::u32_slice_to_u8_vec(&words);
+
     let options = naga::front::spv::Options::default();
-    let module = naga::front::spv::parse_u8_slice(spirv_bytes, &options)
+    let module = naga::front::spv::parse_u8_slice(&spirv_bytes, &options)
         .map_err(|e| format!("naga spv-in: {e:?}"))?;
 
     // Validate with all capabilities: the cook only produces WGSL text; the runtime validates it

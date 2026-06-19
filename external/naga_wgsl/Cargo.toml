@@ -11,6 +11,10 @@ crate-type = ["staticlib"]
 
 [dependencies]
 naga = { version = "29", features = ["spv-in", "wgsl-out"] }
+# SPIR-V->SPIR-V transforms to make glslang output naga-readable: splits combined image samplers into
+# separate texture+sampler (naga can't read OpLoad of OpTypeSampledImage), plus binding-array/push-const/
+# storage-cube patches. Runs before naga in naga_wgsl_from_spirv.
+spirv-webgpu-transform = "0.1.6"
 
 [profile.release]
 opt-level = 2
