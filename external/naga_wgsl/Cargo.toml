@@ -7,7 +7,7 @@ publish = false
 
 [lib]
 name = "naga_wgsl"
-crate-type = ["staticlib"]
+crate-type = ["staticlib", "lib"]
 
 [dependencies]
 naga = { version = "29", features = ["spv-in", "wgsl-out"] }
