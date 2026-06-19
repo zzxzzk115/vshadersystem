@@ -30,7 +30,7 @@ jobs:
         run: xmake f --policies=build.ccache:y -y
 
       - name: Build
-        run: xmake repo -u && xmake -vD -y
+        run: git config --global pull.rebase false && xmake repo -u && xmake -vD -y
 
       - name: Show install error log
         if: failure()

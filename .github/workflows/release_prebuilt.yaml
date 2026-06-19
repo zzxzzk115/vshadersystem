@@ -245,15 +245,15 @@ jobs:
 
       - name: Build (Desktop)
         if: ${{ !matrix.android && matrix.plat != 'wasm' }}
-        run: xmake repo -u && xmake -vD -y
+        run: git config --global pull.rebase false && xmake repo -u && xmake -vD -y
 
       - name: Build (Android)
         if: matrix.android
-        run: xmake repo -u && xmake -vD -y
+        run: git config --global pull.rebase false && xmake repo -u && xmake -vD -y
 
       - name: Build (WASM)
         if: ${{ matrix.plat == 'wasm' }}
-        run: xmake repo -u && xmake -vD -y
+        run: git config --global pull.rebase false && xmake repo -u && xmake -vD -y
 
       - name: Install Bundle
         run: xmake install -o prebuilt/install
