@@ -165,8 +165,20 @@ if (const auto* blob = v1::find(lib, key.build(), ShaderStage::eFrag))
 }
 ```
 
-See [examples/runtime_load_library](examples/runtime_load_library) for the full
-build-then-load flow.
+### Examples
+
+Each example showcases one highlight (build with `xmake`, run with `xmake run <name>`):
+
+- [material_editor](examples/material_editor) — author a PBR shader, then print everything
+  an engine + material editor consume: pipeline reflection (vertex inputs, color outputs,
+  descriptors, entry names), the material inspector schema (type/range/default/color/display
+  name/textures/render state), and keyword toggles.
+- [variant_library](examples/variant_library) — expand keyword permutations into a `.vshlib`,
+  load it, enumerate keywords, and select variants by keyword set.
+- [module_reuse](examples/module_reuse) — pack shared `.slang` modules into a `.vshslang`
+  library and `import` them, with dependency tracking.
+- [cross_backend](examples/cross_backend) — validate a shader is portable across Vulkan /
+  OpenGL / WebGPU / D3D12 / Metal.
 
 ### Engine API (offline)
 

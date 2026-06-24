@@ -1,9 +1,8 @@
-target("example_runtime_load_library")
+target("example_cross_backend")
     set_kind("binary")
     set_languages("cxx23")
     add_files("main.cpp")
 
-    -- builds variants with the Slang compile core, loads them with the runtime reader
     add_deps("vshaderc-lib")
     add_packages("slang-prebuilt")
 
@@ -13,7 +12,7 @@ target("example_runtime_load_library")
         add_rpathdirs("$ORIGIN")
     end
 
-    -- Copy the Slang runtime next to the exe so it runs standalone.
+    -- copy the Slang runtime next to the exe
     after_build(function (target)
         local pkg = target:pkg("slang-prebuilt")
         if not pkg then return end
@@ -29,4 +28,4 @@ target("example_runtime_load_library")
         for _, dylib in ipairs(os.files(path.join(installdir, "lib", "*.dylib"))) do os.trycp(dylib, target:targetdir()) end
     end)
 
-    set_targetdir("$(builddir)/$(plat)/$(arch)/$(mode)/vshadersystem/examples/example_runtime_load_library")
+    set_targetdir("$(builddir)/$(plat)/$(arch)/$(mode)/vshadersystem/examples/example_cross_backend")
