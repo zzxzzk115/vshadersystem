@@ -1,5 +1,0 @@
-# vshadersystem links with the static MSVC runtime (MT/MTd), so build the Rust staticlib with the
-# static CRT too, otherwise linking vshaderc fails with CRT mismatch (LNK2038). Covers all Windows
-# target triples (x64/x86/arm64).
-[target.'cfg(target_os = "windows")']
-rustflags = ["-C", "target-feature=+crt-static"]

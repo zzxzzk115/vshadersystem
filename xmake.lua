@@ -77,9 +77,6 @@ if has_config("vshadersystem_build_compiler") then
     add_requires("slang-prebuilt 2026.11")
 end
 
--- include external dependencies
-includes("external")
-
 -- include source
 includes("source")
 
