@@ -32,5 +32,22 @@ target("vshaderc")
 		for _, dylib in ipairs(os.files(path.join(installdir, "lib", "*.dylib"))) do os.trycp(dylib, target:targetdir()) end
 	end)
 
+	-- Bundle the full Slang runtime next to the INSTALLED vshaderc (xmake install copies
+	-- only the direct import slang.dll, not its dependencies slang-rt/compiler/glslang/...
+	-- nor the .slang standard modules), so the prebuilt CLI runs standalone. Mirrors the
+	-- after_build copy above, but into the install bindir.
+	after_install(function (target)
+		local pkg = target:pkg("slang-prebuilt")
+		if not pkg then return end
+		local installdir = pkg:installdir()
+		if not installdir then return end
+		local bindir = path.join(target:installdir(), "bin")
+		os.mkdir(bindir)
+		for _, f in ipairs(os.files(path.join(installdir, "bin", "*"))) do os.trycp(f, bindir) end
+		for _, d in ipairs(os.dirs(path.join(installdir, "bin", "*"))) do os.trycp(d, bindir) end
+		for _, so in ipairs(os.files(path.join(installdir, "lib", "*.so*"))) do os.trycp(so, bindir) end
+		for _, dylib in ipairs(os.files(path.join(installdir, "lib", "*.dylib"))) do os.trycp(dylib, bindir) end
+	end)
+
 	-- set target directory
 	set_targetdir("$(builddir)/$(plat)/$(arch)/$(mode)/vshaderc")
