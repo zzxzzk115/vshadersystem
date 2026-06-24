@@ -19,6 +19,15 @@ option("vshadersystem_build_examples") -- build examples?
     set_description("Enable vshadersystem examples")
 option_end()
 
+-- Build the host/offline compiler (vshaderc + tools), which links the prebuilt Slang
+-- compiler. Desktop-only: the runtime library never depends on Slang, so Android/WASM
+-- leave this off and only build the loader.
+option("vshadersystem_build_compiler")
+    set_default(not (is_plat("android", "wasm")))
+    set_showmenu(true)
+    set_description("Enable the Slang-based offline compiler (vshaderc, tools)")
+option_end()
+
 -- if build on windows
 if is_plat("windows") then
     add_cxxflags("/Zc:__cplusplus", {tools = {"msvc", "cl"}}) -- fix __cplusplus == 199711L error
@@ -58,12 +67,26 @@ add_rules("clangd.config")
 
 -- add repositories
 add_repositories("my-xmake-repo https://github.com/zzxzzk115/xmake-repo.git backup")
+-- local package overrides (prebuilt Slang 2026.11 for the offline compiler; see the package)
+add_repositories("vshadersystem-local-repo xmake/xmake-repo")
+
+-- The offline compiler links a prebuilt Slang (2026.11) that drives the compiler
+-- in-process. Host/desktop only; gated on the compiler option so Android/WASM (loader
+-- only) never require it.
+if has_config("vshadersystem_build_compiler") then
+    add_requires("slang-prebuilt 2026.11")
+end
 
 -- include external dependencies
 includes("external")
 
 -- include source
 includes("source")
+
+-- host/offline compiler tools
+if has_config("vshadersystem_build_compiler") then
+    includes("tools")
+end
 
 -- if build examples, then include examples
 if has_config("vshadersystem_build_examples") then
