@@ -177,6 +177,17 @@ The desktop build pulls a pinned **prebuilt Slang** (2026.11) via a local xmake 
 and builds `vshadersystem` (runtime), `vshaderc-lib` + `vshaderc` (compiler), and the
 examples.
 
+### Tests
+
+The suite (doctest) authors Slang inline, compiles it through the real pipeline, and
+asserts on the produced binaries, reflection, material, and variants — covering shader
+needs from a trivial triangle to materials, keyword variants, every resource kind, ray
+tracing, module imports, and format round-trips.
+
+```bash
+xmake test
+```
+
 ### Android / WASM (runtime only)
 
 These platforms build **only** the runtime loader (`vshadersystem`) — no Slang, no

@@ -28,6 +28,13 @@ option("vshadersystem_build_compiler")
     set_description("Enable the Slang-based offline compiler (vshaderc, tools)")
 option_end()
 
+-- Build the test suite (needs the Slang compiler; desktop only).
+option("vshadersystem_build_tests")
+    set_default(not (is_plat("android", "wasm")))
+    set_showmenu(true)
+    set_description("Enable the vshadersystem test suite")
+option_end()
+
 -- if build on windows
 if is_plat("windows") then
     add_cxxflags("/Zc:__cplusplus", {tools = {"msvc", "cl"}}) -- fix __cplusplus == 199711L error
@@ -88,4 +95,10 @@ end
 -- if build examples, then include examples
 if has_config("vshadersystem_build_examples") then
     includes("examples")
+end
+
+-- test suite (Slang pipeline + runtime format); desktop only
+if has_config("vshadersystem_build_tests") and has_config("vshadersystem_build_compiler") then
+    add_requires("doctest")
+    includes("tests")
 end
