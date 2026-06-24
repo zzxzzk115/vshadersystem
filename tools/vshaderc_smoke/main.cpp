@@ -8,6 +8,7 @@
 
 #include "vshaderc/slang_compiler.hpp"
 #include "vshaderc/slang_metadata.hpp"
+#include "vshaderc/slang_reflect.hpp"
 
 #include <cstdio>
 
@@ -36,6 +37,10 @@ struct Material
 [VshRenderState("depth_test", "on")]
 void __vsh_meta() {}
 
+[[vk::binding(0, 0)]] ConstantBuffer<Material> uMat;
+[[vk::binding(1, 0)]] Texture2D<float4>        baseColorTex;
+[[vk::binding(2, 0)]] SamplerState             samp;
+
 struct VSOut { float4 pos : SV_Position; float3 col : COLOR0; };
 
 [shader("vertex")]
@@ -51,7 +56,8 @@ VSOut vertexMain(uint vid : SV_VertexID)
 [shader("fragment")]
 float4 fragmentMain(VSOut i) : SV_Target
 {
-    return float4(tonemap(i.col), 1.0);
+    float4 tex = baseColorTex.Sample(samp, i.col.xy);
+    return float4(tonemap(i.col), 1.0) * uMat.baseColorFactor * tex;
 }
 )SLANG";
 
@@ -137,6 +143,50 @@ int main()
                   meta.keywords.size() == 2 && meta.keywords[1].enumValues.size() == 3 &&
                   meta.hasRenderState && meta.renderStateRaw.size() == 2;
 
-    std::printf("\nRESULT: %s\n", (ok && sawCommon && metaOk) ? "PASS" : "FAIL");
-    return (ok && sawCommon && metaOk) ? 0 : 2;
+    // --- program reflection (ProgramLayout -> ShaderReflection + MaterialDescription) ---
+    auto rr = reflect_shader(compiler, "triangle", "triangle.slang", kShader, opt, meta);
+    if (!rr.isOk())
+    {
+        std::printf("FAILED (reflect): %s\n", rr.error().message.c_str());
+        return 1;
+    }
+    const auto& pr = rr.value();
+    std::printf("\n=== reflection ===\n");
+    std::printf("descriptors: %zu\n", pr.reflection.descriptors.size());
+    for (const auto& d : pr.reflection.descriptors)
+        std::printf("  %-14s set=%u binding=%u kind=%d count=%u tex=%d\n", d.name.c_str(), d.set, d.binding,
+                    static_cast<int>(d.kind), d.count, static_cast<int>(d.textureType));
+    std::printf("blocks: %zu\n", pr.reflection.blocks.size());
+    for (const auto& b : pr.reflection.blocks)
+    {
+        std::printf("  block %-10s set=%u binding=%u size=%u members=%zu\n", b.name.c_str(), b.set, b.binding,
+                    b.size, b.members.size());
+        for (const auto& m : b.members)
+            std::printf("      %-18s offset=%u size=%u type=%d\n", m.name.c_str(), m.offset, m.size,
+                        static_cast<int>(m.type));
+    }
+    std::printf("material: block=%s size=%u params=%zu textures=%zu\n", pr.material.materialBlockName.c_str(),
+                pr.material.materialParamSize, pr.material.params.size(), pr.material.textures.size());
+    for (const auto& p : pr.material.params)
+        std::printf("  param %-18s offset=%u size=%u type=%d semantic=%d range=%d\n", p.name.c_str(), p.offset,
+                    p.size, static_cast<int>(p.type), static_cast<int>(p.semantic), static_cast<int>(p.hasRange));
+    for (const auto& t : pr.material.textures)
+        std::printf("  texture %-16s set=%u binding=%u type=%d semantic=%d\n", t.name.c_str(), t.set, t.binding,
+                    static_cast<int>(t.type), static_cast<int>(t.semantic));
+
+    const auto& R = pr.reflection;
+    bool        hasUbo = false, hasTex = false, hasSampler = false;
+    for (const auto& d : R.descriptors)
+    {
+        if (d.kind == vshadersystem::DescriptorKind::eUniformBuffer) hasUbo = true;
+        if (d.kind == vshadersystem::DescriptorKind::eSampledImage) hasTex = true;
+        if (d.kind == vshadersystem::DescriptorKind::eSampler) hasSampler = true;
+    }
+    bool reflOk = hasUbo && hasTex && hasSampler && R.blocks.size() == 1 &&
+                  R.blocks[0].members.size() == 3 && pr.material.params.size() == 2 &&
+                  pr.material.textures.size() == 1 && pr.material.materialParamSize > 0 &&
+                  pr.material.renderState.cull == vshadersystem::CullMode::eBack;
+
+    std::printf("\nRESULT: %s\n", (ok && sawCommon && metaOk && reflOk) ? "PASS" : "FAIL");
+    return (ok && sawCommon && metaOk && reflOk) ? 0 : 2;
 }
