@@ -65,6 +65,7 @@ namespace vshaderc
         ShaderBuildResult result;
         result.shaderId     = opt.shaderId;
         result.shaderIdHash = shader_id_hash(opt.shaderId);
+        result.keywords     = meta.keywords;
 
         const std::vector<KeywordDecl> perm = collect_permute_keywords(meta, opt.engineKeywords);
 
@@ -167,17 +168,20 @@ namespace vshaderc
         return R::ok(std::move(result));
     }
 
-    ShaderBinary to_shader_binary(const VariantBinary& v, uint64_t shaderIdHash)
+    ShaderBinary to_shader_binary(const VariantBinary& v, uint64_t shaderIdHash,
+                                  const std::vector<KeywordDecl>& keywords)
     {
         ShaderBinary b;
-        b.shaderIdHash = shaderIdHash;
-        b.variantHash  = v.variantHash;
-        b.stage        = v.stage;
-        b.spirv        = v.spirv;
-        b.wgsl         = v.wgsl;
-        b.spirvHash    = v.spirv.empty() ? 0 : xxhash64_words(v.spirv);
-        b.reflection   = v.reflection;
-        b.materialDesc = v.material;
+        b.shaderIdHash   = shaderIdHash;
+        b.variantHash    = v.variantHash;
+        b.stage          = v.stage;
+        b.entryPointName = v.entryPointName;
+        b.spirv          = v.spirv;
+        b.wgsl           = v.wgsl;
+        b.spirvHash      = v.spirv.empty() ? 0 : xxhash64_words(v.spirv);
+        b.reflection     = v.reflection;
+        b.materialDesc   = v.material;
+        b.keywords       = keywords;
         return b;
     }
 } // namespace vshaderc

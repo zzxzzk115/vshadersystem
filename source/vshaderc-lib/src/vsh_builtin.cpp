@@ -29,6 +29,15 @@ public struct VshRangeAttribute { float lo; float hi; }
 [__AttributeUsage(_AttributeTargets.Var)]
 public struct VshTextureAttribute { string kind; }
 
+[__AttributeUsage(_AttributeTargets.Var)]
+public struct VshDefaultAttribute { string value; }   // e.g. "1,1,1,1" or "0.5"
+
+[__AttributeUsage(_AttributeTargets.Var)]
+public struct VshColorAttribute {}                    // draw a color picker
+
+[__AttributeUsage(_AttributeTargets.Var)]
+public struct VshDisplayNameAttribute { string name; }
+
 [__AttributeUsage(_AttributeTargets.Function)]
 public struct VshKeywordAttribute { string name; string type; string dispatch; string scope; }
 

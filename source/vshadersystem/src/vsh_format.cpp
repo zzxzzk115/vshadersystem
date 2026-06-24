@@ -166,6 +166,21 @@ namespace vshadersystem::v1
                     w.u8v(static_cast<uint8_t>(m.type));
                 }
             }
+            w.u32v(static_cast<uint32_t>(r.vertexInputs.size()));
+            for (const auto& vi : r.vertexInputs)
+            {
+                w.str(vi.name);
+                w.str(vi.semantic);
+                w.u32v(vi.location);
+                w.u8v(static_cast<uint8_t>(vi.type));
+            }
+            w.u32v(static_cast<uint32_t>(r.colorOutputs.size()));
+            for (const auto& co : r.colorOutputs)
+            {
+                w.str(co.name);
+                w.u32v(co.location);
+                w.u8v(static_cast<uint8_t>(co.type));
+            }
             w.u8v(r.hasLocalSize ? 1 : 0);
             w.u32v(r.localSizeX);
             w.u32v(r.localSizeY);
@@ -211,6 +226,25 @@ namespace vshadersystem::v1
                     b.members.push_back(std::move(m));
                 }
                 out.blocks.push_back(std::move(b));
+            }
+            uint32_t vic = r.u32v();
+            for (uint32_t i = 0; i < vic && !r.bad; ++i)
+            {
+                VertexInput vi;
+                vi.name     = r.str();
+                vi.semantic = r.str();
+                vi.location = r.u32v();
+                vi.type     = static_cast<ParamType>(r.u8v());
+                out.vertexInputs.push_back(std::move(vi));
+            }
+            uint32_t coc = r.u32v();
+            for (uint32_t i = 0; i < coc && !r.bad; ++i)
+            {
+                FragmentOutput fo;
+                fo.name     = r.str();
+                fo.location = r.u32v();
+                fo.type     = static_cast<ParamType>(r.u8v());
+                out.colorOutputs.push_back(std::move(fo));
             }
             out.hasLocalSize = r.u8v() != 0;
             out.localSizeX   = r.u32v();
@@ -262,6 +296,8 @@ namespace vshadersystem::v1
                     w.str(e.label);
                     w.u32v(static_cast<uint32_t>(e.value));
                 }
+                w.u8v(p.isColor ? 1 : 0);
+                w.str(p.displayName);
             }
             w.u32v(static_cast<uint32_t>(m.textures.size()));
             for (const auto& t : m.textures)
@@ -326,6 +362,8 @@ namespace vshadersystem::v1
                     e.value = static_cast<int32_t>(r.u32v());
                     p.enumOptions.push_back(std::move(e));
                 }
+                p.isColor     = r.u8v() != 0;
+                p.displayName = r.str();
                 m.params.push_back(std::move(p));
             }
             uint32_t tc = r.u32v();
@@ -341,6 +379,41 @@ namespace vshadersystem::v1
                 m.textures.push_back(std::move(t));
             }
         }
+        void write_keywords(Writer& w, const std::vector<KeywordDecl>& kws)
+        {
+            w.u32v(static_cast<uint32_t>(kws.size()));
+            for (const auto& k : kws)
+            {
+                w.str(k.name);
+                w.u8v(static_cast<uint8_t>(k.dispatch));
+                w.u8v(static_cast<uint8_t>(k.scope));
+                w.u8v(static_cast<uint8_t>(k.kind));
+                w.u32v(k.defaultValue);
+                w.u32v(static_cast<uint32_t>(k.enumValues.size()));
+                for (const auto& e : k.enumValues)
+                    w.str(e);
+                w.str(k.constraint);
+            }
+        }
+
+        void read_keywords(Reader& r, std::vector<KeywordDecl>& out)
+        {
+            uint32_t n = r.u32v();
+            for (uint32_t i = 0; i < n && !r.bad; ++i)
+            {
+                KeywordDecl k;
+                k.name         = r.str();
+                k.dispatch     = static_cast<KeywordDispatch>(r.u8v());
+                k.scope        = static_cast<KeywordScope>(r.u8v());
+                k.kind         = static_cast<KeywordValueKind>(r.u8v());
+                k.defaultValue = r.u32v();
+                uint32_t ev    = r.u32v();
+                for (uint32_t j = 0; j < ev && !r.bad; ++j)
+                    k.enumValues.push_back(r.str());
+                k.constraint = r.str();
+                out.push_back(std::move(k));
+            }
+        }
     } // namespace
 
     Result<std::vector<uint8_t>> write_binary(const ShaderBinary& bin)
@@ -354,6 +427,7 @@ namespace vshadersystem::v1
         w.u64v(bin.shaderIdHash);
         w.u64v(bin.variantHash);
         w.u64v(spirvHash);
+        w.str(bin.entryPointName);
 
         // chunks
         auto chunk = [&](const char tag[4], const std::function<void(Writer&)>& body) {
@@ -369,6 +443,8 @@ namespace vshadersystem::v1
             chunk("WGSL", [&](Writer& c) { c.bytes(bin.wgsl.data(), bin.wgsl.size()); });
         chunk("REFL", [&](Writer& c) { write_reflection(c, bin.reflection); });
         chunk("MDES", [&](Writer& c) { write_material(c, bin.materialDesc); });
+        if (!bin.keywords.empty())
+            chunk("KWDS", [&](Writer& c) { write_keywords(c, bin.keywords); });
 
         return Result<std::vector<uint8_t>>::ok(std::move(w.buf));
     }
@@ -389,11 +465,12 @@ namespace vshadersystem::v1
             return R::err({ErrorCode::eDeserializeError, "unsupported version " + std::to_string(version)});
 
         ShaderBinary bin;
-        bin.stage        = static_cast<ShaderStage>(r.u32v() & 0xFFu);
-        bin.contentHash  = r.u64v();
-        bin.shaderIdHash = r.u64v();
-        bin.variantHash  = r.u64v();
-        bin.spirvHash    = r.u64v();
+        bin.stage          = static_cast<ShaderStage>(r.u32v() & 0xFFu);
+        bin.contentHash    = r.u64v();
+        bin.shaderIdHash   = r.u64v();
+        bin.variantHash    = r.u64v();
+        bin.spirvHash      = r.u64v();
+        bin.entryPointName = r.str();
 
         while (!r.bad && r.pos + 8 <= r.n)
         {
@@ -422,6 +499,11 @@ namespace vshadersystem::v1
             {
                 Reader cr{r.p + chunkStart, size, 0, false};
                 read_material(cr, bin.materialDesc);
+            }
+            else if (std::memcmp(tag, "KWDS", 4) == 0)
+            {
+                Reader cr{r.p + chunkStart, size, 0, false};
+                read_keywords(cr, bin.keywords);
             }
             r.pos = chunkStart + size; // skip unknown chunks too
         }

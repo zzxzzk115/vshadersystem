@@ -24,6 +24,12 @@ namespace vshaderc
         float       rangeLo  = 0.0f;
         float       rangeHi  = 0.0f;
         std::string textureKind;   // from [VshTexture("Texture2D")], empty if not a texture
+
+        // Editor hints.
+        bool        hasDefault = false;
+        std::string defaultValue;  // from [VshDefault("...")], comma-separated numbers
+        bool        isColor = false;     // from [VshColor]
+        std::string displayName;         // from [VshDisplayName("...")]
     };
 
     struct ShaderMetadata

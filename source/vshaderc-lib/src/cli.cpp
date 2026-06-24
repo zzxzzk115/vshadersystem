@@ -172,13 +172,15 @@ namespace vshaderc::cli
                 return (err("no entry point matching stage in " + in), 1);
 
             ShaderBinary bin;
-            bin.shaderIdHash = shader_id_hash(shaderId);
-            bin.stage        = pick->stage;
-            bin.spirv        = pick->spirv;
-            bin.wgsl         = pick->wgsl;
-            bin.spirvHash    = pick->spirv.empty() ? 0 : xxhash64_words(pick->spirv);
-            bin.reflection   = rr.value().reflection;
-            bin.materialDesc = rr.value().material;
+            bin.shaderIdHash   = shader_id_hash(shaderId);
+            bin.stage          = pick->stage;
+            bin.entryPointName = pick->name;
+            bin.spirv          = pick->spirv;
+            bin.wgsl           = pick->wgsl;
+            bin.spirvHash      = pick->spirv.empty() ? 0 : xxhash64_words(pick->spirv);
+            bin.reflection     = rr.value().reflection;
+            bin.materialDesc   = rr.value().material;
+            bin.keywords       = metaR.value().keywords;
             key.setStage(pick->stage);
             bin.variantHash = key.build();
 
@@ -251,7 +253,7 @@ namespace vshaderc::cli
 
                 for (const auto& v : br.value().variants)
                 {
-                    auto bin = v1::write_binary(to_shader_binary(v, br.value().shaderIdHash));
+                    auto bin = v1::write_binary(to_shader_binary(v, br.value().shaderIdHash, br.value().keywords));
                     if (!bin.isOk())
                         return (err("serialize failed for " + rel), 1);
                     entries.push_back({v.variantHash, v.stage, bin.value()});

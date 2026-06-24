@@ -5,6 +5,8 @@
 #include <slang-com-ptr.h>
 #include <slang.h>
 
+#include <cctype>
+#include <cstdlib>
 #include <cstring>
 
 namespace vshaderc
@@ -66,6 +68,57 @@ namespace vshaderc
             }
         }
 
+        // Number of components an int/float-packed value of this type has.
+        int param_component_count(ParamType t)
+        {
+            switch (t)
+            {
+                case ParamType::eVec2: return 2;
+                case ParamType::eVec3: return 3;
+                case ParamType::eVec4: return 4;
+                case ParamType::eMat3: return 9;
+                case ParamType::eMat4: return 16;
+                default: return 1; // float/int/uint/bool
+            }
+        }
+
+        bool param_is_integer(ParamType t)
+        {
+            return t == ParamType::eInt || t == ParamType::eUInt || t == ParamType::eBool;
+        }
+
+        // Parse a comma-separated default like "1,1,1,1" or "0.5" into a ParamDefault for
+        // the given type (floats, or int32 for integer types). Missing components are 0.
+        void parse_default(const std::string& text, ParamType type, ParamDefault& out)
+        {
+            out.type           = type;
+            const int   comps  = param_component_count(type);
+            const bool  isInt  = param_is_integer(type);
+            size_t      pos    = 0;
+            for (int i = 0; i < comps && i < 16; ++i)
+            {
+                // next token
+                while (pos < text.size() && (text[pos] == ' ' || text[pos] == ','))
+                    ++pos;
+                size_t start = pos;
+                while (pos < text.size() && text[pos] != ',')
+                    ++pos;
+                std::string tok = text.substr(start, pos - start);
+                if (tok.empty())
+                    continue;
+                if (isInt)
+                {
+                    int32_t v = static_cast<int32_t>(std::strtol(tok.c_str(), nullptr, 10));
+                    std::memcpy(out.valueBuffer + i * sizeof(int32_t), &v, sizeof(int32_t));
+                }
+                else
+                {
+                    float v = std::strtof(tok.c_str(), nullptr);
+                    std::memcpy(out.valueBuffer + i * sizeof(float), &v, sizeof(float));
+                }
+            }
+        }
+
         // Map a vsh field semantic string to the Semantic enum.
         Semantic semantic_from_string(const std::string& s)
         {
@@ -92,6 +145,73 @@ namespace vshaderc
                 return 0;
             }
             return static_cast<uint32_t>(n);
+        }
+
+        bool is_system_semantic(const char* s)
+        {
+            return s && (s[0] == 'S' || s[0] == 's') && (s[1] == 'V' || s[1] == 'v') && s[2] == '_';
+        }
+
+        std::string semantic_with_index(slang::VariableLayoutReflection* v)
+        {
+            const char* s = v->getSemanticName();
+            if (!s)
+                return {};
+            std::string out = s;
+            const size_t idx = v->getSemanticIndex();
+            if (idx > 0)
+                out += std::to_string(idx);
+            return out;
+        }
+
+        // Recurse a varying parameter (possibly a struct of attributes) collecting vertex
+        // inputs (skipping system-value semantics like SV_VertexID).
+        void collect_vertex_inputs(slang::VariableLayoutReflection* var, std::vector<VertexInput>& out)
+        {
+            slang::TypeLayoutReflection* tl = var ? var->getTypeLayout() : nullptr;
+            if (!tl)
+                return;
+            if (tl->getKind() == slang::TypeReflection::Kind::Struct)
+            {
+                for (unsigned i = 0, n = tl->getFieldCount(); i < n; ++i)
+                    collect_vertex_inputs(tl->getFieldByIndex(i), out);
+                return;
+            }
+            const char* sem = var->getSemanticName();
+            if (is_system_semantic(sem))
+                return; // SV_VertexID / SV_InstanceID etc. are not vertex-buffer attributes
+            VertexInput vi;
+            vi.name     = var->getName() ? var->getName() : "";
+            vi.semantic = semantic_with_index(var);
+            vi.location = var->getBindingIndex();
+            vi.type     = param_type_from_layout(tl);
+            out.push_back(std::move(vi));
+        }
+
+        // Recurse the result var layout collecting SV_Target color outputs.
+        void collect_color_outputs(slang::VariableLayoutReflection* var, std::vector<FragmentOutput>& out)
+        {
+            slang::TypeLayoutReflection* tl = var ? var->getTypeLayout() : nullptr;
+            if (!tl)
+                return;
+            if (tl->getKind() == slang::TypeReflection::Kind::Struct)
+            {
+                for (unsigned i = 0, n = tl->getFieldCount(); i < n; ++i)
+                    collect_color_outputs(tl->getFieldByIndex(i), out);
+                return;
+            }
+            const char* sem = var->getSemanticName();
+            // Only SV_Target outputs are color attachments (skip SV_Depth, etc.).
+            std::string s = sem ? sem : "";
+            for (auto& c : s)
+                c = static_cast<char>(::toupper(static_cast<unsigned char>(c)));
+            if (s.find("TARGET") == std::string::npos)
+                return;
+            FragmentOutput fo;
+            fo.name     = var->getName() ? var->getName() : "";
+            fo.location = var->getBindingIndex();
+            fo.type     = param_type_from_layout(tl);
+            out.push_back(std::move(fo));
         }
 
         // Reflect one global parameter into descriptors/blocks.
@@ -311,6 +431,15 @@ namespace vshaderc
                 refl.localSizeY   = static_cast<uint32_t>(sizes[1]);
                 refl.localSizeZ   = static_cast<uint32_t>(sizes[2]);
             }
+            else if (er->getStage() == SLANG_STAGE_VERTEX)
+            {
+                for (unsigned p = 0, pn = er->getParameterCount(); p < pn; ++p)
+                    collect_vertex_inputs(er->getParameterByIndex(p), refl.vertexInputs);
+            }
+            else if (er->getStage() == SLANG_STAGE_FRAGMENT)
+            {
+                collect_color_outputs(er->getResultVarLayout(), refl.colorOutputs);
+            }
         }
 
         for (unsigned i = 0, n = layout->getParameterCount(); i < n; ++i)
@@ -365,6 +494,16 @@ namespace vshaderc
                         p.hasRange  = true;
                         p.range.min = fm->rangeLo;
                         p.range.max = fm->rangeHi;
+                    }
+                    if (fm)
+                    {
+                        p.isColor     = fm->isColor;
+                        p.displayName = fm->displayName;
+                        if (fm->hasDefault)
+                        {
+                            p.hasDefault = true;
+                            parse_default(fm->defaultValue, p.type, p.defaultValue);
+                        }
                     }
                     mat.params.push_back(std::move(p));
                 }

@@ -204,6 +204,15 @@ namespace vshaderc
                             fm.semantic = attr_string(attr, 0);
                         else if (name_contains(attr, "VshTexture") && attr->getArgumentCount() >= 1)
                             fm.textureKind = attr_string(attr, 0);
+                        else if (name_contains(attr, "VshDisplayName") && attr->getArgumentCount() >= 1)
+                            fm.displayName = attr_string(attr, 0);
+                        else if (name_contains(attr, "VshDefault") && attr->getArgumentCount() >= 1)
+                        {
+                            fm.hasDefault   = true;
+                            fm.defaultValue = attr_string(attr, 0);
+                        }
+                        else if (name_contains(attr, "VshColor"))
+                            fm.isColor = true;
                         else if (name_contains(attr, "VshRange") && attr->getArgumentCount() >= 2)
                         {
                             float lo = 0.0f, hi = 0.0f;

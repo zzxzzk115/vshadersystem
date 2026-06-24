@@ -52,9 +52,12 @@ namespace vshaderc
         std::string                shaderId;
         uint64_t                   shaderIdHash = 0;
         std::vector<VariantBinary> variants; // (stage x permutation)
-        uint32_t                   combinations = 0;
-        uint32_t                   skipped      = 0;
-        std::string                log;
+        // The shader's own keyword declarations (same across all variants), carried into
+        // each binary so a loaded library can enumerate toggleable features.
+        std::vector<vshadersystem::KeywordDecl> keywords;
+        uint32_t                                combinations = 0;
+        uint32_t                                skipped      = 0;
+        std::string                             log;
     };
 
     Result<ShaderBuildResult> build_shader(SlangCompiler&            compiler,
@@ -64,6 +67,9 @@ namespace vshaderc
                                            const ShaderBuildOptions& opt);
 
     // Convert a built variant into the serializable runtime ShaderBinary (computes
-    // spirvHash). `shaderIdHash` comes from ShaderBuildResult.
-    vshadersystem::ShaderBinary to_shader_binary(const VariantBinary& v, uint64_t shaderIdHash);
+    // spirvHash, carries entry point name + keyword decls). `shaderIdHash` and
+    // `keywords` come from ShaderBuildResult.
+    vshadersystem::ShaderBinary to_shader_binary(const VariantBinary&                            v,
+                                                 uint64_t                                        shaderIdHash,
+                                                 const std::vector<vshadersystem::KeywordDecl>& keywords = {});
 } // namespace vshaderc

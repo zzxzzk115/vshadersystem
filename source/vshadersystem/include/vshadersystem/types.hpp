@@ -1,5 +1,7 @@
 #pragma once
 
+#include "vshadersystem/keywords.hpp"
+
 #include <cstdint>
 #include <string>
 #include <vector>
@@ -314,10 +316,31 @@ namespace vshadersystem
         std::vector<BlockMember> members;
     };
 
+    // Vertex stage input attribute (for building vertex input state / input layout).
+    struct VertexInput
+    {
+        std::string name;
+        std::string semantic; // HLSL-style semantic, e.g. "POSITION", "TEXCOORD0"
+        uint32_t    location = 0;
+        ParamType   type     = ParamType::eFloat;
+    };
+
+    // Fragment stage color output (SV_Target N) for color-attachment configuration.
+    struct FragmentOutput
+    {
+        std::string name;
+        uint32_t    location = 0;
+        ParamType   type     = ParamType::eVec4;
+    };
+
     struct ShaderReflection
     {
         std::vector<DescriptorBinding> descriptors;
         std::vector<BlockLayout>       blocks;
+
+        // Graphics stage I/O (empty for compute / non-matching stages).
+        std::vector<VertexInput>    vertexInputs;
+        std::vector<FragmentOutput> colorOutputs;
 
         bool hasLocalSize = false;
 
@@ -365,6 +388,10 @@ namespace vshadersystem
         ParamRange range;
 
         std::vector<EnumOption> enumOptions;
+
+        // Editor hints.
+        bool        isColor = false; // draw a color picker (from [VshColor])
+        std::string displayName;     // friendly label (from [VshDisplayName]); empty => use name
     };
 
     struct MaterialTextureDesc
@@ -407,9 +434,16 @@ namespace vshadersystem
 
         ShaderStage stage = ShaderStage::eFrag;
 
+        // Entry point function name (e.g. "vertexMain"); used as the pipeline pName.
+        std::string entryPointName;
+
         ShaderReflection reflection;
 
         MaterialDescription materialDesc;
+
+        // The shader's keyword declarations (same across all of its variants), so an
+        // editor/runtime can enumerate toggleable features from a loaded binary.
+        std::vector<KeywordDecl> keywords;
 
         std::vector<uint32_t> spirv;
         std::string           wgsl;
