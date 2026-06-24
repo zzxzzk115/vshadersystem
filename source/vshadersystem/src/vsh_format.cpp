@@ -595,7 +595,8 @@ namespace vshadersystem::v1
             return R::err({ErrorCode::eDeserializeError, "bad TOC offset"});
 
         Library lib;
-        Reader  tr{r.p, r.n, tocOffset, false};
+        // tocOffset is validated <= r.n above, so it fits size_t (32-bit safe).
+        Reader  tr{r.p, r.n, static_cast<size_t>(tocOffset), false};
         for (uint32_t i = 0; i < entryCount; ++i)
         {
             LibraryEntry e;
