@@ -11,6 +11,8 @@
 #include "vshaderc/slang_metadata.hpp"
 #include "vshaderc/slang_reflect.hpp"
 
+#include "vshadersystem/vsh_format.hpp"
+
 #include <cstdio>
 #include <set>
 
@@ -214,7 +216,54 @@ int main()
     bool buildOk = bres.combinations == 6 && bres.variants.size() == 12 && vertHashes.size() == 6 &&
                    fragHashes.size() == 6;
 
-    bool pass = ok && sawCommon && metaOk && reflOk && buildOk;
+    // --- new format round-trip: variants -> .vshlib bytes -> read -> lookup -> .vshbin ---
+    namespace v1 = vshadersystem::v1;
+    std::vector<v1::LibraryEntry> entries;
+    for (const auto& v : bres.variants)
+    {
+        auto binBytes = v1::write_binary(vshaderc::to_shader_binary(v, bres.shaderIdHash));
+        if (!binBytes.isOk())
+        {
+            std::printf("FAILED (write_binary): %s\n", binBytes.error().message.c_str());
+            return 1;
+        }
+        entries.push_back({v.variantHash, v.stage, binBytes.value()});
+    }
+    auto libBytes = v1::write_library(entries, nullptr);
+    auto libR     = libBytes.isOk() ? v1::read_library(libBytes.value())
+                                    : vshadersystem::Result<v1::Library>::err(libBytes.error());
+    bool fmtOk = false;
+    if (libR.isOk())
+    {
+        const auto& lib = libR.value();
+        // pick the first frag variant and round-trip it
+        const vshaderc::VariantBinary* pick = nullptr;
+        for (const auto& v : bres.variants)
+            if (v.stage == vshadersystem::ShaderStage::eFrag)
+            {
+                pick = &v;
+                break;
+            }
+        const auto* blob = pick ? v1::find(lib, pick->variantHash, pick->stage) : nullptr;
+        if (blob)
+        {
+            auto rb = v1::read_binary(*blob);
+            if (rb.isOk())
+            {
+                const auto& sb = rb.value();
+                fmtOk = lib.entries.size() == 12 && sb.variantHash == pick->variantHash &&
+                        sb.stage == vshadersystem::ShaderStage::eFrag && !sb.spirv.empty() &&
+                        !sb.wgsl.empty() && sb.materialDesc.params.size() == 2 &&
+                        sb.reflection.descriptors.size() == 3;
+                std::printf("\n=== format round-trip ===\n");
+                std::printf("lib bytes=%zu entries=%zu | frag binary: spirv=%zu wgsl=%zu params=%zu desc=%zu\n",
+                            libBytes.value().size(), lib.entries.size(), sb.spirv.size(), sb.wgsl.size(),
+                            sb.materialDesc.params.size(), sb.reflection.descriptors.size());
+            }
+        }
+    }
+
+    bool pass = ok && sawCommon && metaOk && reflOk && buildOk && fmtOk;
     std::printf("\nRESULT: %s\n", pass ? "PASS" : "FAIL");
     return pass ? 0 : 2;
 }

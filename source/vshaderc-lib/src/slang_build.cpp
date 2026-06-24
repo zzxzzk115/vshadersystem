@@ -3,6 +3,7 @@
 #include "vshaderc/slang_metadata.hpp"
 #include "vshaderc/slang_reflect.hpp"
 
+#include "vshadersystem/hash.hpp"
 #include "vshadersystem/keyword_expr.hpp"
 #include "vshadersystem/shader_id.hpp"
 #include "vshadersystem/variant_key.hpp"
@@ -164,5 +165,19 @@ namespace vshaderc
         }
 
         return R::ok(std::move(result));
+    }
+
+    ShaderBinary to_shader_binary(const VariantBinary& v, uint64_t shaderIdHash)
+    {
+        ShaderBinary b;
+        b.shaderIdHash = shaderIdHash;
+        b.variantHash  = v.variantHash;
+        b.stage        = v.stage;
+        b.spirv        = v.spirv;
+        b.wgsl         = v.wgsl;
+        b.spirvHash    = v.spirv.empty() ? 0 : xxhash64_words(v.spirv);
+        b.reflection   = v.reflection;
+        b.materialDesc = v.material;
+        return b;
     }
 } // namespace vshaderc

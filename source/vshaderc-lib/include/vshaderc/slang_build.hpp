@@ -62,4 +62,8 @@ namespace vshaderc
                                            const std::string&        modulePath,
                                            const std::string&        moduleSource,
                                            const ShaderBuildOptions& opt);
+
+    // Convert a built variant into the serializable runtime ShaderBinary (computes
+    // spirvHash). `shaderIdHash` comes from ShaderBuildResult.
+    vshadersystem::ShaderBinary to_shader_binary(const VariantBinary& v, uint64_t shaderIdHash);
 } // namespace vshaderc
