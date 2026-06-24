@@ -89,8 +89,26 @@ float4 fragmentMain() : SV_Target
 | `[VshSemantic("name")]` | field | Logical semantic (`baseColor`, `metallic`, `roughness`, `normal`, `emissive`, `occlusion`, `opacity`, `alphaClip`, or custom). |
 | `[VshRange(lo, hi)]` | field | Editor/clamp range for a scalar parameter. |
 | `[VshTexture("Texture2D")]` | field | Surfaces the field as a material texture (the int field is a bindless index). |
+| `[VshDefault("1,0.5,0,1")]` | field | Default value (comma-separated, per component) used to initialize the parameter in an editor. |
+| `[VshColor]` | field | Draw a color picker instead of raw sliders. |
+| `[VshDisplayName("Base Color")]` | field | Friendly label for the editor. |
 | `[VshKeyword(name, type, dispatch, scope)]` | function | A keyword. `type`: `bool` or `enum:a,b,c`. `dispatch`: `permute` (compile-time variant) / `runtime` / `special`. `scope`: `local` / `global` / `material` / `pass`. |
 | `[VshRenderState(key, value)]` | function | Pipeline state, e.g. `("cull","back")`, `("depth_test","on")`, `("blend","off")`, `("depth_func","lequal")`. |
+
+### What reflection gives you
+
+A compiled binary carries everything an engine and a material editor need:
+
+- **Pipeline layout** — descriptor bindings (set/binding/kind/count/access/texture
+  dimension), uniform/storage block member layouts (offset/size/type), push-constant
+  flag, compute local size.
+- **Graphics I/O** — vertex input attributes (semantic/location/type) for the input
+  layout, and fragment color outputs (incl. MRT) for attachment setup.
+- **Entry point name** — the function to bind as the pipeline stage.
+- **Material** — parameters (offset/size/type/semantic/range/**default**/color/display
+  name), textures, and render state, for an auto-generated inspector.
+- **Keywords** — the shader's `[VshKeyword]` declarations, so the editor can enumerate
+  and toggle features, and resolve a `variantHash` to look up the matching binary.
 
 ### Bindings & resources
 
