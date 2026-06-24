@@ -8,6 +8,7 @@
 #include <vshaderc/slang_compiler.hpp>
 #include <vshaderc/slang_metadata.hpp>
 #include <vshaderc/slang_reflect.hpp>
+#include <vshaderc/slang_validate.hpp>
 
 #include <vshadersystem/types.hpp>
 
