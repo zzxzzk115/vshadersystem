@@ -8,11 +8,20 @@ on:
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    name: Build Linux (${{ matrix.arch }})
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # x86_64 and arm64 are both first-class desktop hosts: the prebuilt Slang has a
+          # linux-aarch64 build, so arm64 builds the full compiler + runs the tests too.
+          - runner: ubuntu-latest
+            arch: x86_64
+          - runner: ubuntu-24.04-arm
+            arch: arm64
     steps:
       - uses: actions/checkout@v4
-        with:
-          submodules: recursive
 
       - uses: xmake-io/github-action-setup-xmake@v1
         with:
@@ -21,10 +30,7 @@ jobs:
           build-cache: true
 
       - name: Install dependencies
-        run: sudo apt-get update && sudo apt-get install build-essential cmake git clang libx11-dev -y
-
-      - name: Setup Rust
-        uses: dtolnay/rust-toolchain@stable
+        run: sudo apt-get update && sudo apt-get install build-essential cmake git clang -y
 
       - name: Cache Build
         run: xmake f --policies=build.ccache:y -y
@@ -32,7 +38,11 @@ jobs:
       - name: Build
         run: git config --global pull.rebase false && xmake repo -u && xmake -vD -y
 
+      # Builds and runs the doctest suite (drives the Slang pipeline + runtime format).
+      - name: Test
+        run: xmake test -v
+
       - name: Show install error log
         if: failure()
         run: |
-          find /home/runner/.xmake/cache -name install.txt -exec echo "==== {} ====" \; -exec cat {} \;
+          find "$HOME/.xmake" -name install.txt -exec echo "==== {} ====" \; -exec cat {} \; || true

@@ -20,16 +20,17 @@ jobs:
           actions-cache-folder: ".xmake-cache"
           build-cache: true
 
-      - name: Setup Rust
-        uses: dtolnay/rust-toolchain@stable
-
       - name: Cache Build
         run: xmake f --policies=build.ccache:y -y
 
       - name: Build
         run: git config --global pull.rebase false && xmake repo -u && xmake -vD -y
 
+      # Builds and runs the doctest suite (drives the Slang pipeline + runtime format).
+      - name: Test
+        run: xmake test -v
+
       - name: Show install error log
         if: failure()
         run: |
-          find /home/runner/.xmake/cache -name install.txt -exec echo "==== {} ====" \; -exec cat {} \;
+          find "$HOME/.xmake" -name install.txt -exec echo "==== {} ====" \; -exec cat {} \; || true
