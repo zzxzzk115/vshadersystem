@@ -1,191 +1,153 @@
-#include <vshadersystem/binary.hpp>
-#include <vshadersystem/engine_keywords.hpp>
-#include <vshadersystem/library.hpp>
-#include <vshadersystem/system.hpp>
+// vshadersystem v1.0 example: author Slang, build a variant library, then load it back
+// the way an engine would (runtime reader, zero Slang) and inspect reflection + material.
+
+#include <vshaderc/slang_build.hpp>
+#include <vshaderc/slang_compiler.hpp>
+
+#include <vshadersystem/variant_key.hpp>
+#include <vshadersystem/vsh_format.hpp>
 
 #include <filesystem>
+#include <fstream>
 #include <iostream>
-#include <string>
+#include <iterator>
+#include <vector>
 
 using namespace vshadersystem;
 
-static void usage() { std::cout << "Usage: example_runtime_load_library <shaders.vshlib>\n"; }
+static const char* kShader = R"SLANG(
+import vsh;
 
-static const char* descriptor_kind_name(DescriptorKind kind)
+[VshMaterial]
+struct Material
 {
-    switch (kind)
-    {
-        case DescriptorKind::eUniformBuffer:
-            return "uniform-buffer";
-        case DescriptorKind::eStorageBuffer:
-            return "storage-buffer";
-        case DescriptorKind::eSampledImage:
-            return "sampled-image";
-        case DescriptorKind::eStorageImage:
-            return "storage-image";
-        case DescriptorKind::eSampler:
-            return "sampler";
-        case DescriptorKind::eCombinedImageSampler:
-            return "combined-image-sampler";
-        case DescriptorKind::eAccelerationStructure:
-            return "accel-struct";
-        default:
-            return "unknown";
-    }
+    [VshSemantic("baseColor")]                 float4 baseColorFactor;
+    [VshSemantic("roughness")][VshRange(0, 1)] float  roughnessFactor;
+};
+
+[VshKeyword("USE_SHADOW", "bool", "permute", "global")]
+[VshRenderState("cull", "back")]
+void __vsh_meta() {}
+
+[[vk::binding(0, 0)]] ConstantBuffer<Material>     uMat;
+[[vk::binding(1, 0)]] RWStructuredBuffer<float4>   uOut;
+
+[shader("compute")]
+[numthreads(64, 1, 1)]
+void computeMain(uint3 tid : SV_DispatchThreadID)
+{
+    float3 c = uMat.baseColorFactor.rgb * (1.0 - uMat.roughnessFactor);
+#if USE_SHADOW
+    c *= 0.8;
+#endif
+    uOut[tid.x] = float4(c, uMat.baseColorFactor.a);
 }
+)SLANG";
 
-static const char* resource_access_name(ResourceAccess access)
+static const char* kind_name(DescriptorKind k)
 {
-    switch (access)
+    switch (k)
     {
-        case ResourceAccess::eReadOnly:
-            return "read-only";
-        case ResourceAccess::eWriteOnly:
-            return "write-only";
-        case ResourceAccess::eReadWrite:
-            return "read-write";
-        default:
-            return "unknown";
-    }
-}
-
-static void print_reflection(const ShaderBinary& bin)
-{
-    std::cout << "  descriptors: " << bin.reflection.descriptors.size() << "\n";
-    for (const auto& d : bin.reflection.descriptors)
-    {
-        std::cout << "    - " << d.name << " set=" << d.set << " binding=" << d.binding
-                  << " kind=" << descriptor_kind_name(d.kind) << " access=" << resource_access_name(d.access)
-                  << "\n";
-    }
-
-    std::cout << "  blocks: " << bin.reflection.blocks.size() << "\n";
-    for (const auto& b : bin.reflection.blocks)
-    {
-        std::cout << "    - " << b.name << " set=" << b.set << " binding=" << b.binding << " size=" << b.size
-                  << " access=" << resource_access_name(b.access) << "\n";
+        case DescriptorKind::eUniformBuffer: return "uniform-buffer";
+        case DescriptorKind::eStorageBuffer: return "storage-buffer";
+        case DescriptorKind::eSampledImage: return "sampled-image";
+        case DescriptorKind::eStorageImage: return "storage-image";
+        case DescriptorKind::eSampler: return "sampler";
+        case DescriptorKind::eAccelerationStructure: return "accel-struct";
+        default: return "unknown";
     }
 }
 
 int main()
 {
-    const std::string shaderSrc = R"([vshader]
-id       = "example/runtime_ssbo_access"
-language = glsl
-version = 460
+    namespace v1 = vshadersystem::v1;
 
-[compute]
-#extension GL_EXT_scalar_block_layout : require
-
-layout(local_size_x = 1, local_size_y = 1, local_size_z = 1) in;
-
-layout(set = 0, binding = 0, std430) readonly buffer ReadOnlyData
-{
-    vec4 values[];
-} g_ReadOnlyData;
-
-layout(set = 0, binding = 1, std430) writeonly buffer WriteOnlyData
-{
-    vec4 values[];
-} g_WriteOnlyData;
-
-layout(set = 0, binding = 2, std430) buffer ReadWriteData
-{
-    vec4 values[];
-} g_ReadWriteData;
-
-void main()
-{
-    uint idx = gl_GlobalInvocationID.x;
-    vec4 v = g_ReadOnlyData.values[idx];
-    g_ReadWriteData.values[idx] = v;
-    g_WriteOnlyData.values[idx] = v * vec4(0.5, 1.0, 1.5, 1.0);
-}
-)";
-
-    const std::string libPath = "shaders/generated_runtime_test.vshlib";
-
-    BuildRequest req;
-    req.source.virtualPath = "runtime_ssbo_access.vshader";
-    req.source.sourceText  = shaderSrc;
-    req.options.language   = ShaderLanguage::eGLSL;
-
-    auto built = build_multiple_shaders(req);
-    if (!built.isOk())
+    // ----- offline: compile + expand variants (this is the vshaderc side) -----
+    vshaderc::SlangCompiler compiler;
+    if (!compiler.isValid())
     {
-        std::cerr << "Failed to build runtime test shader library input: " << built.error().message << "\n";
+        std::cerr << "failed to init Slang\n";
         return 1;
     }
 
-    std::vector<ShaderLibraryEntry> entries;
-    entries.reserve(built.value().size());
-    for (const auto& [stage, result] : built.value())
-    {
-        auto bytes = write_vshbin(result.binary);
-        if (!bytes.isOk())
-        {
-            std::cerr << "Failed to serialize stage to vshbin: " << bytes.error().message << "\n";
-            return 1;
-        }
+    vshaderc::ShaderBuildOptions bo;
+    bo.shaderId         = "example/material_compute";
+    bo.compile.emitWgsl = true;
 
-        entries.push_back(ShaderLibraryEntry {
-            .keyHash = result.binary.variantHash,
-            .stage   = stage,
-            .blob    = std::move(bytes.value()),
-        });
+    auto br = vshaderc::build_shader(compiler, "material_compute", "material_compute.slang", kShader, bo);
+    if (!br.isOk())
+    {
+        std::cerr << "build failed: " << br.error().message << "\n";
+        return 1;
+    }
+    const auto& bres = br.value();
+
+    std::vector<v1::LibraryEntry> entries;
+    for (const auto& v : bres.variants)
+    {
+        auto bin = v1::write_binary(vshaderc::to_shader_binary(v, bres.shaderIdHash));
+        entries.push_back({v.variantHash, v.stage, bin.value()});
     }
 
+    const std::string libPath = "shaders/material_compute.vshlib";
     std::filesystem::create_directories(std::filesystem::path(libPath).parent_path());
-    auto wr = write_vslib(libPath, entries, nullptr);
-    if (!wr.isOk())
+    auto libBytes = v1::write_library(entries, nullptr);
     {
-        std::cerr << "Failed to write vshlib: " << wr.error().message << "\n";
-        return 1;
+        std::ofstream f(libPath, std::ios::binary);
+        f.write(reinterpret_cast<const char*>(libBytes.value().data()),
+                static_cast<std::streamsize>(libBytes.value().size()));
     }
+    std::cout << "built " << bres.variants.size() << " variant(s) -> " << libPath << "\n\n";
 
-    auto lr = read_vshlib_file(libPath);
-    if (!lr.isOk())
+    // ----- runtime: load the library and select a variant by keyword (engine side) -----
+    std::ifstream     in(libPath, std::ios::binary);
+    std::vector<uint8_t> data((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+
+    auto libR = v1::read_library(data);
+    if (!libR.isOk())
     {
-        std::cerr << "Failed to load vshlib: " << lr.error().message << "\n";
+        std::cerr << "load failed: " << libR.error().message << "\n";
         return 2;
     }
+    const auto& lib = libR.value();
+    std::cout << "loaded library: " << lib.entries.size() << " entries\n";
 
-    const auto& lib = lr.value();
+    // Compute the variantHash the engine wants: compute stage, USE_SHADOW = 1.
+    VariantKey key;
+    key.setShaderId("example/material_compute");
+    key.setStage(ShaderStage::eComp);
+    key.set("USE_SHADOW", 1);
+    const uint64_t wantHash = key.build();
 
-    // Print library contents
-    std::cout << "Loaded shader library: " << libPath << "\n";
-    std::cout << "  Entries: " << lib.entries.size() << "\n";
-    for (const auto& e : lib.entries)
+    const auto* blob = v1::find(lib, wantHash, ShaderStage::eComp);
+    if (!blob)
     {
-        std::cout << "    keyHash=" << e.keyHash << ", stage=" << static_cast<uint32_t>(e.stage)
-                  << ", offset=" << e.offset << ", size=" << e.size << "\n";
+        std::cerr << "variant (USE_SHADOW=1) not found\n";
+        return 3;
     }
-
-    for (const auto& e : lib.entries)
+    auto binR = v1::read_binary(*blob);
+    if (!binR.isOk())
     {
-        auto blobR = extract_vshlib_blob(lib, e.keyHash, e.stage);
-        if (!blobR.isOk())
-        {
-            std::cerr << "Failed to extract embedded vshbin: " << blobR.error().message << "\n";
-            return 4;
-        }
-
-        auto br = read_vshbin(blobR.value());
-        if (!br.isOk())
-        {
-            std::cerr << "Failed to parse embedded vshbin: " << br.error().message << "\n";
-            return 5;
-        }
-
-        const auto& bin = br.value();
-
-        std::cout << "OK:\n";
-        std::cout << "  stage:       " << static_cast<uint32_t>(bin.stage) << "\n";
-        std::cout << "  shaderIdHash:" << bin.shaderIdHash << "\n";
-        std::cout << "  variantHash: " << bin.variantHash << "\n";
-        std::cout << "  spirv words: " << bin.spirv.size() << "\n";
-        print_reflection(bin);
+        std::cerr << "binary parse failed: " << binR.error().message << "\n";
+        return 4;
     }
+    const auto& bin = binR.value();
+
+    std::cout << "selected variant USE_SHADOW=1 (variantHash=" << bin.variantHash << ")\n";
+    std::cout << "  stage:        compute\n";
+    std::cout << "  spirv words:  " << bin.spirv.size() << "\n";
+    std::cout << "  wgsl bytes:   " << bin.wgsl.size() << "\n";
+    std::cout << "  local size:   " << bin.reflection.localSizeX << "x" << bin.reflection.localSizeY << "x"
+              << bin.reflection.localSizeZ << "\n";
+    std::cout << "  descriptors:  " << bin.reflection.descriptors.size() << "\n";
+    for (const auto& d : bin.reflection.descriptors)
+        std::cout << "    - " << d.name << " set=" << d.set << " binding=" << d.binding << " ("
+                  << kind_name(d.kind) << ")\n";
+    std::cout << "  material:     " << bin.materialDesc.materialBlockName << " ("
+              << bin.materialDesc.materialParamSize << " bytes, " << bin.materialDesc.params.size()
+              << " params)\n";
+    for (const auto& p : bin.materialDesc.params)
+        std::cout << "    - " << p.name << " offset=" << p.offset << " size=" << p.size << "\n";
 
     return 0;
 }
