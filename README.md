@@ -1,7 +1,7 @@
 # vshadersystem
 
 <h4 align="center">
-  vshadersystem is a standalone shader compilation, variant generation, and material reflection pipeline.
+  vshadersystem is a standalone shader compilation, variant generation, and material reflection pipeline built on Slang.
 </h4>
 
 <p align="center">
@@ -9,410 +9,183 @@
         <img src="https://img.shields.io/github/release/zzxzzk115/vshadersystem?include_prereleases=&sort=semver&color=blue" /></a>
     <a href="https://github.com/zzxzzk115/vshadersystem/actions" alt="Build-Windows">
         <img src="https://img.shields.io/github/actions/workflow/status/zzxzzk115/vshadersystem/build_windows.yaml?branch=master&label=Build-Windows&logo=github" /></a>
-    <a href="https://github.com/zzxzzk115/vshadersystem/actions" alt="Build-Linux">
-        <img src="https://img.shields.io/github/actions/workflow/status/zzxzzk115/vshadersystem/build_linux.yaml?branch=master&label=Build-Linux&logo=github" /></a>
-    <a href="https://github.com/zzxzzk115/vshadersystem/actions" alt="Build-macOS">
-        <img src="https://img.shields.io/github/actions/workflow/status/zzxzzk115/vshadersystem/build_macos.yaml?branch=master&label=Build-macOS&logo=github" /></a>
-    <a href="https://github.com/zzxzzk115/vshadersystem/actions" alt="Build-Android">
-        <img src="https://img.shields.io/github/actions/workflow/status/zzxzzk115/vshadersystem/build_android.yaml?branch=master&label=Build-Android&logo=github" /></a>
-    <a href="https://github.com/zzxzzk115/vshadersystem/actions" alt="Build-WASM">
-        <img src="https://img.shields.io/github/actions/workflow/status/zzxzzk115/vshadersystem/build_wasm.yaml?branch=master&label=Build-WASM&logo=github" /></a>
     <a href="https://github.com/zzxzzk115/vshadersystem/issues" alt="GitHub Issues">
         <img src="https://img.shields.io/github/issues/zzxzzk115/vshadersystem"></a>
-    <a href="https://www.codefactor.io/repository/github/zzxzzk115/vshadersystem"><img src="https://www.codefactor.io/repository/github/zzxzzk115/vshadersystem/badge" alt="CodeFactor" /></a>
     <a href="https://github.com/zzxzzk115/vshadersystem/blob/master/LICENSE" alt="GitHub">
         <img src="https://img.shields.io/github/license/zzxzzk115/vshadersystem"></a>
 </p>
 
-> ⚠ Since v0.5, the shader DSL no longer uses `#pragma`.
-> All metadata must be declared using structured INI-style sections.
+> **v1.0 is a major rewrite.** The custom INI-style GLSL DSL is gone. Shaders are now
+> authored in [Slang](https://shader-slang.org), and the engine-level features
+> (materials, keywords/variants, render state) are described with **Slang user-defined
+> attributes** read back through the Slang reflection API. On-disk formats are a clean
+> break and are **not** backward compatible with pre-1.0 `.vshbin`/`.vshlib`/`.vshader`.
 
 ## Overview
 
-**vshadersystem** compiles structured multi-stage GLSL shaders into SPIR-V and extracts
-reflection and material metadata into a unified binary format.
+**vshadersystem** is the *engine-level advanced* layer on top of Slang: it adds materials,
+compile-time keyword variants, render state, and rich reflection that a thin Slang
+front-end (like a render-hardware-interface's own shader tool) deliberately leaves out.
 
-Supported outputs:
+The pipeline is split in two:
 
-- Single shader binaries (`.vshbin`)
-- WebGPU single shader binaries (`.vshwebbin`)
-- Shader libraries with variants (`.vshlib`)
-- WebGPU shader libraries with variants (`.vshweblib`)
+- **`vshaderc` (offline compiler, desktop only)** drives the Slang compiler in-process:
+  Slang → SPIR-V **and** WGSL (emitted directly by Slang, no SPIR-V→WGSL transpiler),
+  plus reflection, material extraction, and variant expansion.
+- **`vshadersystem` (runtime library, all platforms)** only *loads* the compiled
+  binaries. It has **zero Slang dependency**, so Android / WASM build cleanly and just
+  consume prebuilt libraries.
 
-Designed for integration into:
+Outputs:
 
-- Game engines
-- Rendering frameworks
-- Offline asset pipelines
-- Editor tooling
+- Single shader binaries (`.vshbin`) — carry SPIR-V **and** WGSL in one file, so there is
+  no separate WebGPU format; WebGPU consumers read the WGSL chunk.
+- Shader libraries with variants (`.vshlib`).
+- Slang source packs (`.vshslang`) — bundled `.slang` modules for compile-time `import` reuse.
 
-## Features
+## Authoring shaders
 
-- Structured shader DSL (INI-style sections)
-- Multi-stage single-file shaders
-- GLSL → SPIR-V compilation (via glslang)
-- Reflection extraction (via spirv-cross)
-- Optional SPIR-V -> WGSL conversion (via Tint)
-- Deterministic hashing
-- Permutation & runtime keyword system
-- Engine-agnostic material injection
-- Cross-platform support (Windows / Linux / macOS / Android / WASM)
+Shaders are plain Slang. `import vsh;` brings in the attribute library used to describe
+engine metadata. `[shader("stage")]` marks entry points (multiple stages per file).
 
-> v0.7.1 currently targets GLSL-only shader authoring.
-> `slang` support has been removed until the upstream toolchain is stable on Android.
+```slang
+import vsh;
 
-## Shader DSL (v0.5+)
-
-Shaders are written using structured sections.
-
-### Example
-
-```glsl
-[vshader]
-id       = "example/pbr"
-language = glsl
-version  = 460
-
-[keywords]
-USE_SHADOW : bool permute
-QUALITY    : enum(low,medium,high) permute
-
-[properties]
-baseColorFactor : vec4 = (1,1,1,1)
-metallicFactor  : float = 0.0
-roughnessFactor : float = 0.5
-baseColorTex    : Texture2D
-
-[renderstate]
-cull        = back
-depth_test  = on
-depth_write = on
-blend       = off
-
-[vert]
-layout(location=0) in vec3 inPos;
-void main() { }
-
-[frag]
-layout(location=0) out vec4 outColor;
-void main() { }
-```
-
-## Sections
-
-### [vshader]
-
-Required.
-
-| Key      | Description                                                        |
-| -------- | ----------------------------------------------------------------- |
-| id       | **Required.** Stable logical shader id, e.g. `id = "builtin/fxaa"`. Used as the shader's identity for variant lookup; must be unique across a library. It is no longer derived from the file name. |
-| language | glsl                                                              |
-| version  | GLSL version (e.g., 460)                                          |
-
-> Migration note: the legacy filename-stem id derivation has been removed. Every
-> shader must declare an explicit `id`. Duplicate ids within a library are a build
-> error. (When compiling raw GLSL through the C++ API without a `[vshader]`
-> section, set `BuildRequest.id` instead.)
-
-### [keywords]
-
-Defines permutation or runtime keywords.
-
-```
-NAME : bool permute
-NAME : enum(a,b,c) permute
-NAME : bool runtime
-NAME : int special
-```
-
-Types:
-
-- permute → compile-time variants
-- runtime → no variant expansion
-- special → specialization constant
-
-### [properties]
-
-Defines material parameters.
-
-Supported types:
-
-- float
-- vec2 / vec3 / vec4
-- int
-- enum(name=0,other=1) (defaults may use either the label or the integer value)
-- Texture2D
-- Texture2DArray
-
-Generates:
-
-- Material struct
-- Reflection metadata
-- Default values
-
-### [renderstate]
-
-Describes pipeline state configuration.
-
-```
-cull = back
-depth_test = on
-depth_write = on
-blend = off
-```
-
-### Stage Sections
-
-Each shader stage is declared using a section:
-
-```
-[vert] (or [vertex])
-[frag] (or [fragment])
-[comp] (or [compute])
-[mesh]
-[task]
-[rgen] (or [raygen])
-[rmiss] (or [miss],[raymiss])
-[rchit] (or [closesthit],[raychit])
-[rahit] (or [anyhit],[rayahit])
-[rint] (or [intersect],[rayint])
-```
-
-`build_multiple_shaders()` automatically compiles all present stages.
-
-## Material Injection
-
-vshadersystem does not assume a runtime binding model.
-
-Engines may inject descriptor bindings and material access logic:
-
-```cpp
-BuildRequest req;
-
-req.options.materialInjection = {
-    .preamble = "...",
-    .materialAddressExpr = "...",
-    .bindlessTextureArrayName = "...",
-    .macroPrefix = "VSH_"
+[VshMaterial]
+struct Material
+{
+    [VshSemantic("baseColor")]                 float4 baseColorFactor;
+    [VshSemantic("metallic")] [VshRange(0, 1)] float  metallicFactor;
+    [VshSemantic("roughness")][VshRange(0, 1)] float  roughnessFactor;
+    [VshTexture("Texture2D")]                  int    baseColorTex_index;
 };
+
+// Keyword + render-state declarations sit on one marker function and are read back via
+// reflection. In code, gate on keywords with `#if KEYWORD` / `#if KEYWORD == N`.
+[VshKeyword("USE_SHADOW", "bool", "permute", "global")]
+[VshKeyword("QUALITY", "enum:low,medium,high", "permute", "local")]
+[VshRenderState("cull", "back")]
+[VshRenderState("depth_test", "on")]
+void __vsh_meta() {}
+
+[[vk::binding(0, 0)]] ConstantBuffer<Material> uMat;
+
+[shader("fragment")]
+float4 fragmentMain() : SV_Target
+{
+    float3 c = uMat.baseColorFactor.rgb;
+#if USE_SHADOW
+    c *= 0.8;
+#endif
+    return float4(c, uMat.baseColorFactor.a);
+}
 ```
 
-This allows BDA, SSBO, UBO, push constant, or custom GPU-driven architectures.
+### vsh attributes
 
-## CLI Usage
+| Attribute | Target | Meaning |
+| --- | --- | --- |
+| `[VshMaterial]` | struct | Marks the material parameter struct. |
+| `[VshSemantic("name")]` | field | Logical semantic (`baseColor`, `metallic`, `roughness`, `normal`, `emissive`, `occlusion`, `opacity`, `alphaClip`, or custom). |
+| `[VshRange(lo, hi)]` | field | Editor/clamp range for a scalar parameter. |
+| `[VshTexture("Texture2D")]` | field | Surfaces the field as a material texture (the int field is a bindless index). |
+| `[VshKeyword(name, type, dispatch, scope)]` | function | A keyword. `type`: `bool` or `enum:a,b,c`. `dispatch`: `permute` (compile-time variant) / `runtime` / `special`. `scope`: `local` / `global` / `material` / `pass`. |
+| `[VshRenderState(key, value)]` | function | Pipeline state, e.g. `("cull","back")`, `("depth_test","on")`, `("blend","off")`, `("depth_func","lequal")`. |
+
+### Bindings & resources
+
+Resources use Slang/HLSL types with explicit Vulkan bindings:
+`[[vk::binding(binding, set)]] ConstantBuffer<T> / Texture2D / SamplerState /
+RWStructuredBuffer<T> / RaytracingAccelerationStructure`. Reflection reads these back
+into descriptor/block layouts.
+
+### Module reuse (libraries)
+
+Any `.slang` file can be a reusable module (`module foo;` + `public` decls) and imported
+with `import foo;`. Package a directory of modules into a `.vshslang` source pack so they
+resolve at compile time from any source location.
+
+## CLI
 
 ```
-Usage:
-  vshaderc compile -i <input.vshader> -o <output.vshbin> -S <stage> [options]
-  vshaderc compile --webgpu -i <input.vshader> -o <output.vshwebbin> -S <stage> [options]
-  vshaderc build --shader_root <dir> -o <output.vshlib> [options]
-  vshaderc build --webgpu --shader_root <dir> -o <output.vshweblib> [options]
-  vshaderc packlib -o <output.vshlib> <in1.vshbin> <in2.vshbin> ...
-  vshaderc packlib --webgpu -o <output.vshweblib> <in1.vshwebbin> <in2.vshwebbin> ...
-  vshaderc pack-glsl --root <dir> -o <output.vshglsl> [--ext .glsl ...]
-  vshaderc wgsl -i <input.vshbin|input.vshwebbin|input.spv> -o <output.wgsl>
-
-build options:
-  -I <dir>               add a filesystem include directory
-  --mount <name>=<lib.vshglsl>
-                         mount a packed GLSL library under <name> in the include
-                         VFS, so `#include "<name>/<path>"` resolves to it from
-                         any source location (repeatable)
+vshaderc compile -i <in.slang> -o <out.vshbin> -S <stage> [-I <dir>] [-D K=V] [--no-wgsl] [--id <id>]
+vshaderc build --shader_root <dir> -o <out.vshlib> [--keywords-file <vkw>] [-I <dir>] [--no-wgsl]
+vshaderc pack-slang --root <dir> -o <out.vshslang> [--ext .slang]
 ```
 
-## Includes & the VFS
+- `compile` emits one binary (SPIR-V + WGSL) for the entry point of `-S <stage>`.
+- `build` recursively compiles `.slang` under `--shader_root`, expands permutation
+  keywords (shader `[VshKeyword]` + engine `.vkw`), and writes a variant library. The
+  stable shader id is the path relative to the root (without extension).
+- `pack-slang` bundles `.slang` sources for `import` reuse.
 
-Includes are resolved against an in-memory **VFS** by their **absolute VFS path
-first** (then, as a fallback, relative to the including file's directory). This
-makes shared/library includes resolve identically from any source location
-(project shaders, generated shaders in subdirectories, etc.).
+Stages: `vert frag geom comp task mesh rgen rmiss rchit rahit rint`.
 
-A **GLSL library** (`.vshglsl`) packages a directory of `.glsl` files and is
-mounted at compile time. The mount name is prefixed onto each library file's
-relative path:
+## Runtime loading (engine side)
 
-```bash
-# Package builtin GLSL whose contents live under .../include (vultra/, common/, ...)
-vshaderc pack-glsl --root engine/shaders/include -o out/builtin.vshglsl
-
-# Mount at root so `#include "vultra/mesh_material.glsl"` resolves
-vshaderc build --shader_root project/shaders --mount =out/builtin.vshglsl -o out/project.vshlib
-
-# Or mount under a namespace: pack the namespace contents and mount as that name
-vshaderc pack-glsl --root engine/shaders/include/vultra -o out/vultra.vshglsl
-vshaderc build --shader_root project/shaders --mount vultra=out/vultra.vshglsl -o out/project.vshlib
-```
-
-The C++ API exposes the same via `CompileOptions::vfsMounts` (a list of
-`VfsMount{ mount, files }`) and `read_glsl_library_file()` / `write_glsl_library()`.
-
-## WGSL Workflow
-
-### Compile Single Shader for WebGPU
-
-```bash
-vshaderc compile --webgpu --material-mode ssbo \
-  -i shaders/pbr.frag.vshader \
-  -o out/pbr.frag.vshwebbin \
-  -S frag
-```
-
-Notes:
-
-- `--webgpu` forces `.vshwebbin` output.
-- `--material-mode=bda` is rejected in WebGPU mode.
-- WebGPU profile constrains compile target to Tint reader-compatible settings
-  (`Vulkan 1.1` + `SPIR-V 1.3`) to avoid validation mismatch.
-- Output binary embeds SPIR-V and WGSL text.
-
-### Build Variant Library for WebGPU
-
-```bash
-vshaderc build --webgpu --material-mode ssbo \
-  --shader_root shaders \
-  --keywords-file shaders/engine_keywords.vkw \
-  -o out/shaders.vshweblib
-```
-
-Notes:
-
-- Variant expansion still works the same as native build.
-- Each variant is validated through SPIR-V -> WGSL conversion.
-- Output is forced to `.vshweblib`.
-
-### Pack Prebuilt WebGPU Binaries
-
-```bash
-vshaderc packlib --webgpu \
-  -o out/shaders.vshweblib \
-  out/a.frag.vshwebbin out/b.vert.vshwebbin
-```
-
-Notes:
-
-- `packlib --webgpu` only accepts `.vshwebbin`.
-- Non-webgpu `packlib` rejects `.vshwebbin` to prevent mixing formats.
-
-### Extract / Inspect WGSL
-
-```bash
-vshaderc wgsl -i out/pbr.frag.vshwebbin -o out/pbr.frag.wgsl
-```
-
-Also supports `.vshbin` and raw `.spv` input.
-
-## Library Usage
-
-### Build Single Shader
+The runtime library is Slang-free. Load a library, compute the variant key, and read the
+binary:
 
 ```cpp
-BuildRequest req;
-req.source.sourceText  = loadFile("shader.vshader");
-req.source.virtualPath = "shader.vshader";
-req.options.stage      = ShaderStage::eFrag;
+#include <vshadersystem/vsh_format.hpp>
+#include <vshadersystem/variant_key.hpp>
+using namespace vshadersystem;
+namespace v1 = vshadersystem::v1;
 
-auto r = build_single_shader(req);
+auto lib = v1::read_library(bytes).value();
+
+VariantKey key;
+key.setShaderId("pipelines/pbr");
+key.setStage(ShaderStage::eFrag);
+key.set("USE_SHADOW", 1);
+key.set("QUALITY", 2);
+
+if (const auto* blob = v1::find(lib, key.build(), ShaderStage::eFrag))
+{
+    auto bin = v1::read_binary(*blob).value();
+    // bin.spirv / bin.wgsl / bin.reflection / bin.materialDesc
+}
 ```
 
-If you compile for a WebGPU/Tint pipeline through the C++ API (without `vshaderc --webgpu`),
-enable the WebGPU profile explicitly:
+See [examples/runtime_load_library](examples/runtime_load_library) for the full
+build-then-load flow.
+
+### Engine API (offline)
+
+To compile in-process instead of shelling out to `vshaderc`, link `vshaderc-lib`:
 
 ```cpp
-req.options.webgpuProfile = true;
+#include <vshaderc/slang_build.hpp>
+vshaderc::SlangCompiler compiler;
+vshaderc::ShaderBuildOptions opt;
+opt.shaderId = "pipelines/pbr";
+opt.compile.emitWgsl = true;
+auto r = vshaderc::build_shader(compiler, "pbr", "pbr.slang", source, opt); // -> variants
 ```
 
-### Build Multi-Stage Shader
+## Building
 
-```cpp
-BuildRequest req;
-req.source.sourceText  = loadFile("shader.vshader");
-req.source.virtualPath = "shader.vshader";
+Prerequisites: Git, [XMake](https://xmake.io), and a C++23 compiler (MSVC / GCC / Clang).
 
-auto r = build_multiple_shaders(req);
+```bash
+git clone https://github.com/zzxzzk115/vshadersystem.git
+cd vshadersystem
+xmake -vD
 ```
 
-## Build Instructions
+The desktop build pulls a pinned **prebuilt Slang** (2026.11) via a local xmake package
+and builds `vshadersystem` (runtime), `vshaderc-lib` + `vshaderc` (compiler), and the
+examples.
 
-Prerequisites:
+### Android / WASM (runtime only)
 
-- Git
-- XMake
-- Visual Studio, GCC, or Clang
+These platforms build **only** the runtime loader (`vshadersystem`) — no Slang, no
+compiler. They consume prebuilt `.vshbin` / `.vshlib` produced on a desktop host.
 
-Clone:
-
-    git clone https://github.com/zzxzzk115/vshadersystem.git
-
-Build:
-
-    cd vshadersystem
-    xmake -vD
-
-Tint is built-in by default (used for SPIR-V -> WGSL conversion).
-
-Build for Android:
-
-- Install Android NDK first.
-- Android currently builds the runtime library only (`vshadersystem`).
-- `vshaderc` and example targets are disabled on Android in v0.6.1.
-- If XMake cannot auto-detect your Android toolchain, pass the NDK path explicitly.
-
-Example:
-
-    cd vshadersystem
-    xmake f -p android --ndk=/path/to/android/sdk/ndk/<version>
-    xmake
-
-Build for WASM:
-
-- WASM currently builds the runtime library only (`vshadersystem`).
-- `vshaderc` and example targets are disabled on WASM.
-- Install Emscripten SDK first.
-
-Example:
-
-    cd vshadersystem
-    xmake f -p wasm -a wasm32
-    xmake
-
-Run the example (for desktop):
-
-    xmake run example_build_shader
-    xmake run example_keywords
-    xmake run example_runtime_load_library
-    xmake run example_webgpu
-
-## Prebuilt Releases
-
-To avoid long multi-platform compile times (especially with Tint), this repository provides
-an automated prebuilt packaging workflow.
-
-- Workflow: `.github/workflows/release_prebuilt.yaml`
-- Trigger:
-  - Publish a GitHub Release (recommended), or
-  - Run workflow manually with a tag (e.g. `v0.7.1`)
-- Output assets (attached to the release), one prebuilt bundle per platform/arch:
-  - `vshadersystem-prebuilt-<tag>-linux-x86.zip`
-  - `vshadersystem-prebuilt-<tag>-linux-x86_64.zip`
-  - `vshadersystem-prebuilt-<tag>-linux-arm64.zip`
-  - `vshadersystem-prebuilt-<tag>-windows-x64.zip`
-  - `vshadersystem-prebuilt-<tag>-macosx-arm64.zip`
-  - `vshadersystem-prebuilt-<tag>-android-arm64-v8a.zip`
-  - `vshadersystem-prebuilt-<tag>-android-armeabi-v7a.zip`
-  - `vshadersystem-prebuilt-<tag>-android-x86_64.zip`
-  - `vshadersystem-prebuilt-<tag>-wasm-wasm32.zip`
-
-Each bundle is produced by `xmake install` and may contain:
-
-- `include/`
-- `lib/`
-- `bin/` (if available on that platform; e.g. `vshaderc` on desktop)
-
-Android/WASM bundles are runtime-only and typically do not include `bin/`.
-
-This makes downstream xmake-repo packages simple: select asset by `(plat, arch)`,
-download, unpack, then export `includedirs/linkdirs/links`.
+```bash
+xmake f -p android --ndk=/path/to/ndk     # or: xmake f -p wasm -a wasm32
+xmake
+```
 
 ## License
 
