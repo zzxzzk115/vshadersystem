@@ -122,10 +122,12 @@ jobs:
           actions-cache-folder: ".xmake-cache"
           build-cache: true
 
-      # Prebuilt bundles ship the runtime LOADER only (no Slang). The offline compiler
-      # (vshaderc) is built from source on a dev machine, where it fetches the prebuilt
-      # Slang itself. So every release configure passes --vshadersystem_build_compiler=n;
-      # this also keeps 32-bit / cross targets (which have no prebuilt Slang) building.
+      # Desktop host prebuilts (windows-x64, linux-x86_64, macosx-arm64) ship the offline
+      # compiler (vshaderc + the prebuilt Slang it links) next to the runtime loader, so
+      # consumers get the CLI straight from the package (--vshadersystem_build_compiler=y).
+      # Targets with no prebuilt Slang for that host triple -- linux-x86 (32-bit),
+      # linux-arm64 (cross), Android and WASM -- build the runtime loader only and pass
+      # --vshadersystem_build_compiler=n.
       - name: Setup MSVC Dev Cmd (Windows pinned)
         if: ${{ !matrix.android && matrix.plat == 'windows' && matrix.vs_toolset != 'latest' }}
         uses: ilammy/msvc-dev-cmd@v1
@@ -207,19 +209,19 @@ jobs:
 
       - name: Configure (Windows native)
         if: ${{ !matrix.android && matrix.plat == 'windows' && matrix.vs_toolset != 'latest' }}
-        run: xmake f -m release -p windows -a ${{ matrix.arch }} --vs=${{ matrix.vs }} --vs_toolset=${{ matrix.vs_toolset }} --runtimes=${{ matrix.runtime }} --vshadersystem_build_examples=n --vshadersystem_build_compiler=n --policies=build.ccache:y -y
+        run: xmake f -m release -p windows -a ${{ matrix.arch }} --vs=${{ matrix.vs }} --vs_toolset=${{ matrix.vs_toolset }} --runtimes=${{ matrix.runtime }} --vshadersystem_build_examples=n --vshadersystem_build_compiler=y --policies=build.ccache:y -y
 
       - name: Configure (Windows native latest)
         if: ${{ !matrix.android && matrix.plat == 'windows' && matrix.vs_toolset == 'latest' }}
-        run: xmake f -m release -p windows -a ${{ matrix.arch }} --vs=${{ matrix.vs }} --runtimes=${{ matrix.runtime }} --vshadersystem_build_examples=n --vshadersystem_build_compiler=n --policies=build.ccache:y -y
+        run: xmake f -m release -p windows -a ${{ matrix.arch }} --vs=${{ matrix.vs }} --runtimes=${{ matrix.runtime }} --vshadersystem_build_examples=n --vshadersystem_build_compiler=y --policies=build.ccache:y -y
 
       - name: Configure (Linux x86_64 native)
         if: ${{ !matrix.android && matrix.plat == 'linux' && matrix.arch == 'x86_64' }}
-        run: xmake f -m release --vshadersystem_build_examples=n --vshadersystem_build_compiler=n --policies=build.ccache:y -y
+        run: xmake f -m release --vshadersystem_build_examples=n --vshadersystem_build_compiler=y --policies=build.ccache:y -y
 
       - name: Configure (macOS arm64 native)
         if: ${{ !matrix.android && matrix.plat == 'macosx' && matrix.arch == 'arm64' }}
-        run: xmake f -m release -p macosx --vshadersystem_build_examples=n --vshadersystem_build_compiler=n --policies=build.ccache:y -y
+        run: xmake f -m release -p macosx --vshadersystem_build_examples=n --vshadersystem_build_compiler=y --policies=build.ccache:y -y
 
       - name: Configure (Android arm64-v8a native)
         if: ${{ matrix.android && matrix.arch == 'arm64-v8a' }}
