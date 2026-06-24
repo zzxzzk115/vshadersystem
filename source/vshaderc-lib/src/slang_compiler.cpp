@@ -1,5 +1,6 @@
 #include "vshaderc/slang_compiler.hpp"
 
+#include "slang_internal.hpp"
 #include "slang_vfs.hpp"
 
 #include <slang-com-ptr.h>
@@ -44,6 +45,8 @@ namespace vshaderc
     SlangCompiler::~SlangCompiler() { delete m_Impl; }
 
     bool SlangCompiler::isValid() const { return m_Impl && m_Impl->global != nullptr; }
+
+    void* SlangCompiler::nativeGlobalSession() const { return m_Impl ? m_Impl->global.get() : nullptr; }
 
     static std::string blob_to_string(slang::IBlob* b)
     {
@@ -110,14 +113,10 @@ namespace vshaderc
         for (const auto& d : opt.defines)
             macros.push_back({d.name.c_str(), d.value.empty() ? "1" : d.value.c_str()});
 
-        // --- VFS file system ---
+        // --- VFS file system (builtin vsh module + caller VFS + top module + disk) ---
+        const std::string        topPath = modulePath.empty() ? (moduleName + ".slang") : modulePath;
         detail::MemoryFileSystem fs;
-        for (const auto& f : opt.vfsFiles)
-            fs.addFile(f.path, f.text);
-        // Expose the top module under its logical path too (so sibling imports resolve).
-        fs.addFile(modulePath.empty() ? (moduleName + ".slang") : modulePath, moduleSource);
-        for (const auto& dir : opt.searchDirs)
-            fs.addSearchDir(dir);
+        detail::populate_filesystem(fs, opt, topPath, moduleSource);
 
         // searchPaths: root, so `import foo` resolves to "foo.slang" via the file system.
         const char* searchPaths[] = {""};

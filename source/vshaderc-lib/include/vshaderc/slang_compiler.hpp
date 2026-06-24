@@ -99,6 +99,11 @@ namespace vshaderc
                                                  const std::string&        moduleSource,
                                                  const SlangCompileOptions& opt);
 
+        // Returns the underlying slang::IGlobalSession* (as void*) so sibling
+        // translation units (e.g. metadata extraction) can reuse it without a header
+        // dependency on the Slang headers. Null if construction failed.
+        void* nativeGlobalSession() const;
+
     private:
         struct Impl;
         Impl* m_Impl = nullptr;

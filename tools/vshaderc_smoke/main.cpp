@@ -7,6 +7,7 @@
 // Run:   xmake run vshaderc_smoke
 
 #include "vshaderc/slang_compiler.hpp"
+#include "vshaderc/slang_metadata.hpp"
 
 #include <cstdio>
 
@@ -19,6 +20,21 @@ public float3 tonemap(float3 c) { return c / (c + 1.0); }
 
 static const char* kShader = R"SLANG(
 import common;
+import vsh;
+
+[VshMaterial]
+struct Material
+{
+    [VshSemantic("baseColor")]                 float4 baseColorFactor;
+    [VshSemantic("metallic")] [VshRange(0, 1)] float  metallicFactor;
+    [VshTexture("Texture2D")]                  int    baseColorTex_index;
+};
+
+[VshKeyword("USE_SHADOW", "bool", "permute", "global")]
+[VshKeyword("QUALITY", "enum:low,medium,high", "permute", "local")]
+[VshRenderState("cull", "back")]
+[VshRenderState("depth_test", "on")]
+void __vsh_meta() {}
 
 struct VSOut { float4 pos : SV_Position; float3 col : COLOR0; };
 
@@ -94,6 +110,33 @@ int main()
             sawCommon = true;
     }
 
-    std::printf("\nRESULT: %s\n", (ok && sawCommon) ? "PASS" : "FAIL");
-    return (ok && sawCommon) ? 0 : 2;
+    // --- metadata extraction (vsh attributes via reflection) ---
+    auto mr = extract_shader_metadata(compiler, "triangle", "triangle.slang", kShader, opt);
+    if (!mr.isOk())
+    {
+        std::printf("FAILED (metadata): %s\n", mr.error().message.c_str());
+        return 1;
+    }
+    const auto& meta = mr.value();
+    std::printf("\n=== metadata ===\n");
+    std::printf("material struct: %s (%zu fields)\n", meta.materialStructName.c_str(), meta.materialFields.size());
+    for (const auto& f : meta.materialFields)
+        std::printf("  field %-18s semantic=%-10s range=%s texture=%s\n", f.name.c_str(),
+                    f.semantic.empty() ? "-" : f.semantic.c_str(),
+                    f.hasRange ? "yes" : "no", f.textureKind.empty() ? "-" : f.textureKind.c_str());
+    std::printf("keywords: %zu\n", meta.keywords.size());
+    for (const auto& k : meta.keywords)
+        std::printf("  %-12s kind=%d dispatch=%d scope=%d enums=%zu\n", k.name.c_str(),
+                    static_cast<int>(k.kind), static_cast<int>(k.dispatch), static_cast<int>(k.scope),
+                    k.enumValues.size());
+    std::printf("renderState present=%d cull=%d depthTest=%d (raw %zu)\n",
+                static_cast<int>(meta.hasRenderState), static_cast<int>(meta.renderState.cull),
+                static_cast<int>(meta.renderState.depthTest), meta.renderStateRaw.size());
+
+    bool metaOk = meta.materialStructName == "Material" && meta.materialFields.size() == 3 &&
+                  meta.keywords.size() == 2 && meta.keywords[1].enumValues.size() == 3 &&
+                  meta.hasRenderState && meta.renderStateRaw.size() == 2;
+
+    std::printf("\nRESULT: %s\n", (ok && sawCommon && metaOk) ? "PASS" : "FAIL");
+    return (ok && sawCommon && metaOk) ? 0 : 2;
 }
