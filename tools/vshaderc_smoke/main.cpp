@@ -6,11 +6,13 @@
 // Build: xmake f --vshadersystem_build_compiler=y && xmake build vshaderc_smoke
 // Run:   xmake run vshaderc_smoke
 
+#include "vshaderc/slang_build.hpp"
 #include "vshaderc/slang_compiler.hpp"
 #include "vshaderc/slang_metadata.hpp"
 #include "vshaderc/slang_reflect.hpp"
 
 #include <cstdio>
+#include <set>
 
 using namespace vshaderc;
 
@@ -187,6 +189,32 @@ int main()
                   pr.material.textures.size() == 1 && pr.material.materialParamSize > 0 &&
                   pr.material.renderState.cull == vshadersystem::CullMode::eBack;
 
-    std::printf("\nRESULT: %s\n", (ok && sawCommon && metaOk && reflOk) ? "PASS" : "FAIL");
-    return (ok && sawCommon && metaOk && reflOk) ? 0 : 2;
+    // --- variant expansion (USE_SHADOW{2} x QUALITY{3} = 6 combos x 2 stages = 12) ---
+    ShaderBuildOptions bopt;
+    bopt.compile  = opt;
+    bopt.shaderId = "example/triangle";
+    auto br       = build_shader(compiler, "triangle", "triangle.slang", kShader, bopt);
+    if (!br.isOk())
+    {
+        std::printf("FAILED (build): %s\n", br.error().message.c_str());
+        return 1;
+    }
+    const auto& bres = br.value();
+    std::printf("\n=== variants ===\n");
+    std::printf("combinations=%u skipped=%u variants=%zu\n", bres.combinations, bres.skipped,
+                bres.variants.size());
+    std::set<uint64_t> vertHashes, fragHashes;
+    for (const auto& v : bres.variants)
+    {
+        if (v.stage == vshadersystem::ShaderStage::eVert) vertHashes.insert(v.variantHash);
+        if (v.stage == vshadersystem::ShaderStage::eFrag) fragHashes.insert(v.variantHash);
+    }
+    std::printf("distinct vert hashes=%zu frag hashes=%zu\n", vertHashes.size(), fragHashes.size());
+
+    bool buildOk = bres.combinations == 6 && bres.variants.size() == 12 && vertHashes.size() == 6 &&
+                   fragHashes.size() == 6;
+
+    bool pass = ok && sawCommon && metaOk && reflOk && buildOk;
+    std::printf("\nRESULT: %s\n", pass ? "PASS" : "FAIL");
+    return pass ? 0 : 2;
 }
