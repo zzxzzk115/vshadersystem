@@ -8,6 +8,8 @@
 
 #include <vshadersystem/vsh_format.hpp>
 
+#include <cstring>
+
 namespace v1 = vshadersystem::v1;
 using namespace vsht;
 

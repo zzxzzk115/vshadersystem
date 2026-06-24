@@ -78,9 +78,13 @@ add_repositories("my-xmake-repo https://github.com/zzxzzk115/xmake-repo.git back
 add_repositories("vshadersystem-local-repo xmake/xmake-repo")
 
 -- The offline compiler links a prebuilt Slang (2026.11) that drives the compiler
--- in-process. Host/desktop only; gated on the compiler option so Android/WASM (loader
--- only) never require it.
-if has_config("vshadersystem_build_compiler") then
+-- in-process. Host/desktop only. NOTE: an option's set_default cannot see the target
+-- platform reliably (it is evaluated before -p is applied), so the platform gate must
+-- use is_plat() HERE, at include time, where the platform is known. Android/WASM build
+-- the loader only and never pull in Slang.
+local build_compiler = has_config("vshadersystem_build_compiler") and not is_plat("android", "wasm")
+
+if build_compiler then
     add_requires("slang-prebuilt 2026.11")
 end
 
@@ -88,7 +92,7 @@ end
 includes("source")
 
 -- host/offline compiler tools
-if has_config("vshadersystem_build_compiler") then
+if build_compiler then
     includes("tools")
 end
 
@@ -98,7 +102,7 @@ if has_config("vshadersystem_build_examples") then
 end
 
 -- test suite (Slang pipeline + runtime format); desktop only
-if has_config("vshadersystem_build_tests") and has_config("vshadersystem_build_compiler") then
+if has_config("vshadersystem_build_tests") and build_compiler then
     add_requires("doctest")
     includes("tests")
 end
