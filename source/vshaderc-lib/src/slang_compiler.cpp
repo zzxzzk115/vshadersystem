@@ -127,6 +127,12 @@ namespace vshaderc
         sessionDesc.searchPaths        = searchPaths;
         sessionDesc.searchPathCount    = 1;
         sessionDesc.fileSystem         = &fs;
+        // Slang's own default is row-major; we default to column-major (glm / GLSL / SPIR-V
+        // convention) so `mul(mvp, v)` with column-major-uploaded matrices is not transposed.
+        // Per-field row_major/column_major qualifiers in the shader still override this.
+        sessionDesc.defaultMatrixLayoutMode = (opt.matrixLayout == MatrixLayout::Row)
+                                                  ? SLANG_MATRIX_LAYOUT_ROW_MAJOR
+                                                  : SLANG_MATRIX_LAYOUT_COLUMN_MAJOR;
         if (!macros.empty())
         {
             sessionDesc.preprocessorMacros     = macros.data();

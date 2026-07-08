@@ -39,6 +39,17 @@ namespace vshaderc
         std::string value; // empty => defined as "1"
     };
 
+    // Matrix memory layout for matrix-typed constants/uniforms. Slang's own default is
+    // ROW-major; this library defaults to COLUMN-major to match column-major math libraries
+    // (glm) and the GLSL/SPIR-V/Vulkan convention shared across the engine ecosystem. A shader
+    // that mismatches this reads its matrices transposed (e.g. an MVP that collapses every
+    // vertex). Per-field `row_major`/`column_major` qualifiers in the shader still override it.
+    enum class MatrixLayout
+    {
+        Column, // column-major (default; matches glm)
+        Row,    // row-major (Slang/HLSL native)
+    };
+
     struct SlangCompileOptions
     {
         // In-memory files served to `import`/`#include` (the packaged shader library
@@ -57,6 +68,9 @@ namespace vshaderc
 
         // SPIR-V target profile (Slang profile name).
         std::string spirvProfile = "spirv_1_5";
+
+        // Memory layout for matrix constants (default column-major; see MatrixLayout).
+        MatrixLayout matrixLayout = MatrixLayout::Column;
 
         bool optimize  = false;
         bool debugInfo = false;

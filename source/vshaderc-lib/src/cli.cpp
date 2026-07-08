@@ -97,6 +97,25 @@ namespace vshaderc::cli
             }
         };
 
+        // Parse --matrix-layout <column|row> (default column-major, matching glm / GLSL / Vulkan).
+        // Returns false on an invalid value.
+        bool get_matrix_layout(const Args& args, MatrixLayout& out)
+        {
+            const std::string m = args.get("--matrix-layout");
+            if (m.empty() || m == "column" || m == "col")
+            {
+                out = MatrixLayout::Column;
+                return true;
+            }
+            if (m == "row")
+            {
+                out = MatrixLayout::Row;
+                return true;
+            }
+            err("--matrix-layout must be 'column' or 'row'");
+            return false;
+        }
+
         // Resolve the per-shader default permutation values into a variantHash and the
         // matching macro defines, so `compile` emits the default variant directly.
         void default_keyword_defines(const ShaderMetadata& meta, SlangCompileOptions& co,
@@ -136,6 +155,8 @@ namespace vshaderc::cli
                 auto eq = d.find('=');
                 co.defines.push_back({d.substr(0, eq), eq == std::string::npos ? "1" : d.substr(eq + 1)});
             }
+            if (!get_matrix_layout(args, co.matrixLayout))
+                return 2;
 
             SlangCompiler compiler;
             if (!compiler.isValid())
@@ -216,6 +237,10 @@ namespace vshaderc::cli
 
             std::vector<std::string> extraI = args.getAll("-I");
 
+            MatrixLayout matrixLayout = MatrixLayout::Column;
+            if (!get_matrix_layout(args, matrixLayout))
+                return 2;
+
             SlangCompiler compiler;
             if (!compiler.isValid())
                 return (err("failed to initialize Slang"), 1);
@@ -237,8 +262,9 @@ namespace vshaderc::cli
                     rel.resize(rel.size() - 6);
 
                 ShaderBuildOptions bo;
-                bo.shaderId          = rel;
-                bo.compile.emitWgsl  = !args.has("--no-wgsl");
+                bo.shaderId             = rel;
+                bo.compile.emitWgsl     = !args.has("--no-wgsl");
+                bo.compile.matrixLayout = matrixLayout;
                 bo.compile.searchDirs.push_back(de.path().parent_path().string());
                 bo.compile.searchDirs.push_back(root);
                 for (const auto& d : extraI)
@@ -295,10 +321,15 @@ namespace vshaderc::cli
 
         void usage()
         {
-            std::printf("vshaderc (v1.0, Slang)\n"
-                        "  compile -i <in.slang> -o <out.vshbin> [-S <stage>] [-I <dir>] [-D K=V] [--no-wgsl] [--id <id>]\n"
-                        "  build --shader_root <dir> -o <out.vshlib> [--keywords-file <vkw>] [-I <dir>] [--no-wgsl]\n"
-                        "  pack-slang --root <dir> -o <out.vshslang> [--ext .slang]\n");
+            std::printf(
+                "vshaderc (v1.0, Slang)\n"
+                "  compile -i <in.slang> -o <out.vshbin> [-S <stage>] [-I <dir>] [-D K=V] [--no-wgsl]\n"
+                "          [--matrix-layout column|row] [--id <id>]\n"
+                "  build --shader_root <dir> -o <out.vshlib> [--keywords-file <vkw>] [-I <dir>] [--no-wgsl]\n"
+                "        [--matrix-layout column|row]\n"
+                "  pack-slang --root <dir> -o <out.vshslang> [--ext .slang]\n"
+                "\n"
+                "  --matrix-layout  memory layout for matrix constants (default: column, matches glm/GLSL/Vulkan)\n");
         }
     } // namespace
 

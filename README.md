@@ -126,8 +126,10 @@ resolve at compile time from any source location.
 ## CLI
 
 ```
-vshaderc compile -i <in.slang> -o <out.vshbin> -S <stage> [-I <dir>] [-D K=V] [--no-wgsl] [--id <id>]
+vshaderc compile -i <in.slang> -o <out.vshbin> -S <stage> [-I <dir>] [-D K=V] [--no-wgsl]
+         [--matrix-layout column|row] [--id <id>]
 vshaderc build --shader_root <dir> -o <out.vshlib> [--keywords-file <vkw>] [-I <dir>] [--no-wgsl]
+         [--matrix-layout column|row]
 vshaderc pack-slang --root <dir> -o <out.vshslang> [--ext .slang]
 ```
 
@@ -138,6 +140,11 @@ vshaderc pack-slang --root <dir> -o <out.vshslang> [--ext .slang]
 - `pack-slang` bundles `.slang` sources for `import` reuse.
 
 Stages: `vert frag geom comp task mesh rgen rmiss rchit rahit rint`.
+
+**Matrix layout.** `--matrix-layout` (and `SlangCompileOptions::matrixLayout`) default to
+**column-major**, matching glm / GLSL / SPIR-V / Vulkan — so a host matrix (e.g. a glm MVP)
+used with `mul(m, v)` is not read transposed. Slang's own default is row-major; per-field
+`row_major` / `column_major` qualifiers in the shader still override the global choice.
 
 ## Runtime loading (engine side)
 
