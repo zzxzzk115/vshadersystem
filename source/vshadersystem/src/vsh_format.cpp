@@ -441,6 +441,11 @@ namespace vshadersystem::v1
             chunk("SPRV", [&](Writer& c) { c.bytes(bin.spirv.data(), bin.spirv.size() * sizeof(uint32_t)); });
         if (!bin.wgsl.empty())
             chunk("WGSL", [&](Writer& c) { c.bytes(bin.wgsl.data(), bin.wgsl.size()); });
+        // DXBC/DXIL are optional chunks; older readers skip unknown tags, so no version bump.
+        if (!bin.dxbc.empty())
+            chunk("DXBC", [&](Writer& c) { c.bytes(bin.dxbc.data(), bin.dxbc.size()); });
+        if (!bin.dxil.empty())
+            chunk("DXIL", [&](Writer& c) { c.bytes(bin.dxil.data(), bin.dxil.size()); });
         chunk("REFL", [&](Writer& c) { write_reflection(c, bin.reflection); });
         chunk("MDES", [&](Writer& c) { write_material(c, bin.materialDesc); });
         if (!bin.keywords.empty())
@@ -489,6 +494,14 @@ namespace vshadersystem::v1
             else if (std::memcmp(tag, "WGSL", 4) == 0)
             {
                 bin.wgsl.assign(reinterpret_cast<const char*>(r.p + chunkStart), size);
+            }
+            else if (std::memcmp(tag, "DXBC", 4) == 0)
+            {
+                bin.dxbc.assign(r.p + chunkStart, r.p + chunkStart + size);
+            }
+            else if (std::memcmp(tag, "DXIL", 4) == 0)
+            {
+                bin.dxil.assign(r.p + chunkStart, r.p + chunkStart + size);
             }
             else if (std::memcmp(tag, "REFL", 4) == 0)
             {

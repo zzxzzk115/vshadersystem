@@ -146,6 +146,8 @@ namespace vshaderc
                     vb.variantHash    = key.build();
                     vb.spirv          = ep.spirv;
                     vb.wgsl           = ep.wgsl;
+                    vb.dxbc           = ep.dxbc;
+                    vb.dxil           = ep.dxil;
                     vb.reflection     = rr.value().reflection;
                     vb.material       = rr.value().material;
                     result.variants.push_back(std::move(vb));
@@ -178,6 +180,8 @@ namespace vshaderc
         b.entryPointName = v.entryPointName;
         b.spirv          = v.spirv;
         b.wgsl           = v.wgsl;
+        b.dxbc           = v.dxbc;
+        b.dxil           = v.dxil;
         b.spirvHash      = v.spirv.empty() ? 0 : xxhash64_words(v.spirv);
         b.reflection     = v.reflection;
         b.materialDesc   = v.material;

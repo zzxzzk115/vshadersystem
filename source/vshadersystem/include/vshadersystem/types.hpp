@@ -445,7 +445,9 @@ namespace vshadersystem
         // editor/runtime can enumerate toggleable features from a loaded binary.
         std::vector<KeywordDecl> keywords;
 
-        std::vector<uint32_t> spirv;
-        std::string           wgsl;
+        std::vector<uint32_t> spirv; // Vulkan (and OpenGL/Metal via transpilers)
+        std::string           wgsl;  // WebGPU
+        std::vector<uint8_t>  dxbc;  // Direct3D 12 (Shader Model 5.1, via fxc)
+        std::vector<uint8_t>  dxil;  // Direct3D 12 (Shader Model 6.0+, via dxc)
     };
 } // namespace vshadersystem

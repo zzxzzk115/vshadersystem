@@ -70,6 +70,8 @@ namespace vshaderc
         std::vector<slang::TargetDesc> targets;
         int spirvIndex = -1;
         int wgslIndex  = -1;
+        int dxbcIndex  = -1;
+        int dxilIndex  = -1;
         {
             slang::TargetDesc spv = {};
             spv.format            = SLANG_SPIRV;
@@ -83,6 +85,22 @@ namespace vshaderc
             wg.format            = SLANG_WGSL;
             wgslIndex            = static_cast<int>(targets.size());
             targets.push_back(wg);
+        }
+        if (opt.emitDxbc)
+        {
+            slang::TargetDesc t = {};
+            t.format            = SLANG_DXBC;
+            t.profile           = global->findProfile(opt.dxbcProfile.c_str());
+            dxbcIndex           = static_cast<int>(targets.size());
+            targets.push_back(t);
+        }
+        if (opt.emitDxil)
+        {
+            slang::TargetDesc t = {};
+            t.format            = SLANG_DXIL;
+            t.profile           = global->findProfile(opt.dxilProfile.c_str());
+            dxilIndex           = static_cast<int>(targets.size());
+            targets.push_back(t);
         }
 
         // --- compiler options ---
@@ -219,6 +237,34 @@ namespace vshaderc
                     code)
                 {
                     outEp.wgsl = blob_to_string(code);
+                }
+                logText += blob_to_string(diag);
+            }
+            // DXBC (fxc) / DXIL (dxc) are best-effort: a host without the compiler leaves the blob
+            // empty (and keeps the diagnostic in the log) rather than failing the whole cook.
+            if (opt.emitDxbc && dxbcIndex >= 0)
+            {
+                ComPtr<slang::IBlob> code;
+                diag = nullptr;
+                if (SLANG_SUCCEEDED(linked->getEntryPointCode(static_cast<SlangInt>(i), dxbcIndex,
+                                                              code.writeRef(), diag.writeRef())) &&
+                    code && code->getBufferSize() > 0)
+                {
+                    const uint8_t* bytes = static_cast<const uint8_t*>(code->getBufferPointer());
+                    outEp.dxbc.assign(bytes, bytes + code->getBufferSize());
+                }
+                logText += blob_to_string(diag);
+            }
+            if (opt.emitDxil && dxilIndex >= 0)
+            {
+                ComPtr<slang::IBlob> code;
+                diag = nullptr;
+                if (SLANG_SUCCEEDED(linked->getEntryPointCode(static_cast<SlangInt>(i), dxilIndex,
+                                                              code.writeRef(), diag.writeRef())) &&
+                    code && code->getBufferSize() > 0)
+                {
+                    const uint8_t* bytes = static_cast<const uint8_t*>(code->getBufferPointer());
+                    outEp.dxil.assign(bytes, bytes + code->getBufferSize());
                 }
                 logText += blob_to_string(diag);
             }

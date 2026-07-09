@@ -147,6 +147,8 @@ namespace vshaderc::cli
 
             SlangCompileOptions co;
             co.emitWgsl = !args.has("--no-wgsl");
+            co.emitDxbc = args.has("--dxbc"); // Direct3D 12 SM5.1 (needs fxc; opt-in, Windows host)
+            co.emitDxil = args.has("--dxil"); // Direct3D 12 SM6.0 (needs dxc; opt-in, Windows host)
             co.searchDirs.push_back(inPath.has_parent_path() ? inPath.parent_path().string() : ".");
             for (const auto& d : args.getAll("-I"))
                 co.searchDirs.push_back(d);
@@ -264,6 +266,8 @@ namespace vshaderc::cli
                 ShaderBuildOptions bo;
                 bo.shaderId             = rel;
                 bo.compile.emitWgsl     = !args.has("--no-wgsl");
+                bo.compile.emitDxbc     = args.has("--dxbc");
+                bo.compile.emitDxil     = args.has("--dxil");
                 bo.compile.matrixLayout = matrixLayout;
                 bo.compile.searchDirs.push_back(de.path().parent_path().string());
                 bo.compile.searchDirs.push_back(root);
@@ -319,17 +323,117 @@ namespace vshaderc::cli
             return 0;
         }
 
+        // Strip a .vshlib down to the bytecode needed for a set of targets, for release packaging.
+        int cmd_strip(const Args& args)
+        {
+            const std::string in  = args.get("-i");
+            const std::string out = args.get("-o");
+            if (in.empty() || out.empty())
+                return (err("strip requires -i <in.vshlib> -o <out.vshlib>"), 2);
+
+            struct KeepSet
+            {
+                bool spirv = false, wgsl = false, dxbc = false, dxil = false;
+            } keep;
+            bool       any   = false;
+            const auto apply = [&](const std::string& list, bool byApi) {
+                size_t start = 0;
+                while (start <= list.size())
+                {
+                    const size_t      comma = list.find(',', start);
+                    const std::string tok =
+                        list.substr(start, comma == std::string::npos ? std::string::npos : comma - start);
+                    if (!tok.empty())
+                    {
+                        any = true;
+                        if (byApi)
+                        {
+                            if (tok == "vulkan" || tok == "opengl" || tok == "gl" || tok == "metal")
+                                keep.spirv = true;
+                            else if (tok == "webgpu" || tok == "wgpu")
+                                keep.wgsl = true;
+                            else if (tok == "d3d12" || tok == "dx12")
+                                keep.dxbc = keep.dxil = true;
+                            else
+                                err("strip: unknown --api '" + tok + "' (ignored)");
+                        }
+                        else if (tok == "spirv")
+                            keep.spirv = true;
+                        else if (tok == "wgsl")
+                            keep.wgsl = true;
+                        else if (tok == "dxbc")
+                            keep.dxbc = true;
+                        else if (tok == "dxil")
+                            keep.dxil = true;
+                        else
+                            err("strip: unknown --keep '" + tok + "' (ignored)");
+                    }
+                    if (comma == std::string::npos)
+                        break;
+                    start = comma + 1;
+                }
+            };
+            apply(args.get("--api"), true);
+            apply(args.get("--keep"), false);
+            if (!any)
+                return (err("strip needs --api <vulkan,webgpu,d3d12,...> or --keep <spirv,wgsl,dxbc,dxil>"), 2);
+
+            std::string text;
+            if (!read_file(in, text))
+                return (err("cannot read " + in), 1);
+            const std::vector<uint8_t> bytes(text.begin(), text.end());
+            auto                       lib = v1::read_library(bytes);
+            if (!lib.isOk())
+                return (err(lib.error().message), 1);
+
+            std::vector<v1::LibraryEntry> entries;
+            for (const auto& e : lib.value().entries)
+            {
+                auto bin = v1::read_binary(e.blob);
+                if (!bin.isOk())
+                    return (err("strip: " + bin.error().message), 1);
+                ShaderBinary b = bin.value();
+                if (!keep.spirv)
+                {
+                    b.spirv.clear();
+                    b.spirvHash = 0;
+                }
+                if (!keep.wgsl)
+                    b.wgsl.clear();
+                if (!keep.dxbc)
+                    b.dxbc.clear();
+                if (!keep.dxil)
+                    b.dxil.clear();
+                auto reblob = v1::write_binary(b);
+                if (!reblob.isOk())
+                    return (err("strip: serialize failed"), 1);
+                entries.push_back({e.variantHash, e.stage, reblob.value()});
+            }
+            const std::vector<uint8_t>& vkw = lib.value().engineKeywords;
+            auto libBytes = v1::write_library(entries, vkw.empty() ? nullptr : &vkw);
+            if (!libBytes.isOk() || !write_file(out, libBytes.value()))
+                return (err("failed to write " + out), 1);
+            std::printf("stripped %zu variant(s) -> %s (kept:%s%s%s%s)\n", entries.size(), out.c_str(),
+                        keep.spirv ? " spirv" : "", keep.wgsl ? " wgsl" : "", keep.dxbc ? " dxbc" : "",
+                        keep.dxil ? " dxil" : "");
+            return 0;
+        }
+
         void usage()
         {
             std::printf(
-                "vshaderc (v1.0, Slang)\n"
+                "vshaderc (v1.1, Slang)\n"
                 "  compile -i <in.slang> -o <out.vshbin> [-S <stage>] [-I <dir>] [-D K=V] [--no-wgsl]\n"
-                "          [--matrix-layout column|row] [--id <id>]\n"
+                "          [--dxbc] [--dxil] [--matrix-layout column|row] [--id <id>]\n"
                 "  build --shader_root <dir> -o <out.vshlib> [--keywords-file <vkw>] [-I <dir>] [--no-wgsl]\n"
-                "        [--matrix-layout column|row]\n"
+                "        [--dxbc] [--dxil] [--matrix-layout column|row]\n"
+                "  strip -i <in.vshlib> -o <out.vshlib> --api <list> | --keep <list>\n"
                 "  pack-slang --root <dir> -o <out.vshslang> [--ext .slang]\n"
                 "\n"
-                "  --matrix-layout  memory layout for matrix constants (default: column, matches glm/GLSL/Vulkan)\n");
+                "  --dxbc / --dxil  also emit Direct3D 12 bytecode (SM5.1 via fxc / SM6.0 via dxc; Windows host)\n"
+                "  --matrix-layout  memory layout for matrix constants (default: column, matches glm/GLSL/Vulkan)\n"
+                "  strip --api      vulkan|opengl|metal (spirv), webgpu (wgsl), d3d12 (dxbc+dxil); or --keep\n"
+                "                   spirv,wgsl,dxbc,dxil - drops the other bytecode per variant for release\n");
         }
     } // namespace
 
@@ -348,6 +452,8 @@ namespace vshaderc::cli
             return cmd_build(args);
         if (cmd == "pack-slang")
             return cmd_pack_slang(args);
+        if (cmd == "strip")
+            return cmd_strip(args);
         if (cmd == "-h" || cmd == "--help" || cmd == "help")
             return (usage(), 0);
         err("unknown command: " + cmd);

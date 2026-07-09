@@ -1,5 +1,18 @@
 # Changelog
 
+## v1.1.0
+
+- **Direct3D 12 bytecode + release stripping.** `ShaderBinary` now also carries **DXBC**
+  (SM5.1, via fxc) and **DXIL** (SM6.0, via dxc). `vshaderc compile`/`build` gain `--dxbc`
+  and `--dxil` (and `SlangCompileOptions::emitDxbc`/`emitDxil`); DXBC/DXIL need the Windows
+  shader compilers, and a host without them leaves the blob empty (best-effort, no failure).
+- **`vshaderc strip`**: rewrite a `.vshlib` keeping only the bytecode for a set of targets
+  (`--api vulkan,webgpu,d3d12,...` or `--keep spirv,wgsl,dxbc,dxil`) — cook all platforms in
+  development, strip to the shipping targets at release.
+- On-disk format: DXBC/DXIL are optional chunks; older readers skip unknown chunks, so this
+  is backward- and forward-compatible (no format version change).
+- Tests: `test_dx_targets.cpp` (chunk round-trip + emission).
+
 ## v1.0.1
 
 - **Configurable matrix layout, defaulting to column-major.** Add `--matrix-layout column|row`

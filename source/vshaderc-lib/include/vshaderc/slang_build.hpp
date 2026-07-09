@@ -28,6 +28,8 @@ namespace vshaderc
 
         std::vector<uint32_t>              spirv;
         std::string                        wgsl;
+        std::vector<uint8_t>               dxbc;
+        std::vector<uint8_t>               dxil;
         vshadersystem::ShaderReflection    reflection;
         vshadersystem::MaterialDescription material;
     };

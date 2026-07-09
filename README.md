@@ -127,9 +127,10 @@ resolve at compile time from any source location.
 
 ```
 vshaderc compile -i <in.slang> -o <out.vshbin> -S <stage> [-I <dir>] [-D K=V] [--no-wgsl]
-         [--matrix-layout column|row] [--id <id>]
+         [--dxbc] [--dxil] [--matrix-layout column|row] [--id <id>]
 vshaderc build --shader_root <dir> -o <out.vshlib> [--keywords-file <vkw>] [-I <dir>] [--no-wgsl]
-         [--matrix-layout column|row]
+         [--dxbc] [--dxil] [--matrix-layout column|row]
+vshaderc strip -i <in.vshlib> -o <out.vshlib> --api <list> | --keep <list>
 vshaderc pack-slang --root <dir> -o <out.vshslang> [--ext .slang]
 ```
 
@@ -137,9 +138,25 @@ vshaderc pack-slang --root <dir> -o <out.vshslang> [--ext .slang]
 - `build` recursively compiles `.slang` under `--shader_root`, expands permutation
   keywords (shader `[VshKeyword]` + engine `.vkw`), and writes a variant library. The
   stable shader id is the path relative to the root (without extension).
+- `strip` rewrites a `.vshlib` keeping only the bytecode for the requested targets, for
+  release packaging (see below).
 - `pack-slang` bundles `.slang` sources for `import` reuse.
 
 Stages: `vert frag geom comp task mesh rgen rmiss rchit rahit rint`.
+
+**Backends / bytecode.** A binary carries **SPIR-V** (Vulkan; also OpenGL/Metal via
+transpilers) and, on request, **WGSL** (WebGPU, on by default; `--no-wgsl` to skip),
+**DXBC** (`--dxbc`, Direct3D 12 SM5.1 via fxc) and **DXIL** (`--dxil`, Direct3D 12 SM6.0
+via dxc). DXBC/DXIL need the Windows shader compilers at cook time; a host without them
+leaves those blobs empty (best-effort, no failure). The idea is to cook everything during
+development and **`strip`** to the shipping targets at release:
+
+```
+vshaderc strip -i all.vshlib -o vulkan.vshlib --api vulkan          # keeps SPIR-V only
+vshaderc strip -i all.vshlib -o win.vshlib    --api d3d12,webgpu    # keeps DXBC+DXIL+WGSL
+vshaderc strip -i all.vshlib -o min.vshlib    --keep spirv,dxil     # explicit blob list
+```
+`--api`: `vulkan`/`opengl`/`metal` -> SPIR-V, `webgpu` -> WGSL, `d3d12` -> DXBC+DXIL.
 
 **Matrix layout.** `--matrix-layout` (and `SlangCompileOptions::matrixLayout`) default to
 **column-major**, matching glm / GLSL / SPIR-V / Vulkan — so a host matrix (e.g. a glm MVP)

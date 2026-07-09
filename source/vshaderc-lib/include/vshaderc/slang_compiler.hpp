@@ -62,12 +62,18 @@ namespace vshaderc
         // Preprocessor macros (keyword variant defines).
         std::vector<SlangDefine> defines;
 
-        // Which targets to emit. SPIR-V always; WGSL only when requested.
+        // Which targets to emit. SPIR-V is the default; the others are opt-in. DXBC needs fxc
+        // and DXIL needs dxc (both Windows-host at cook time); when a host cannot produce a
+        // requested target, that blob is left empty and a note is logged (no hard failure).
         bool emitSpirv = true;
         bool emitWgsl  = false;
+        bool emitDxbc  = false; // Direct3D 12, Shader Model 5.1
+        bool emitDxil  = false; // Direct3D 12, Shader Model 6.0+
 
-        // SPIR-V target profile (Slang profile name).
+        // Target profiles (Slang profile names).
         std::string spirvProfile = "spirv_1_5";
+        std::string dxbcProfile  = "sm_5_1";
+        std::string dxilProfile  = "sm_6_0";
 
         // Memory layout for matrix constants (default column-major; see MatrixLayout).
         MatrixLayout matrixLayout = MatrixLayout::Column;
@@ -82,6 +88,8 @@ namespace vshaderc
         ShaderStage           stage = ShaderStage::eUnknown;
         std::vector<uint32_t> spirv; // populated when emitSpirv
         std::string           wgsl;  // populated when emitWgsl
+        std::vector<uint8_t>  dxbc;  // populated when emitDxbc (empty if the host lacks fxc)
+        std::vector<uint8_t>  dxil;  // populated when emitDxil (empty if the host lacks dxc)
     };
 
     struct SlangCompileResult
