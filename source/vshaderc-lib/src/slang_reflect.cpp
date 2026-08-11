@@ -417,6 +417,8 @@ namespace vshaderc
                 case ShaderStage::eVert: stageFlags |= eStageVert; break;
                 case ShaderStage::eFrag: stageFlags |= eStageFrag; break;
                 case ShaderStage::eGeom: stageFlags |= eStageGeom; break;
+                case ShaderStage::eHull: stageFlags |= eStageHull; break;
+                case ShaderStage::eDomain: stageFlags |= eStageDomain; break;
                 case ShaderStage::eComp: stageFlags |= eStageComp; break;
                 case ShaderStage::eTask: stageFlags |= eStageTask; break;
                 case ShaderStage::eMesh: stageFlags |= eStageMesh; break;

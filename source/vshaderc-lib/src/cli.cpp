@@ -58,6 +58,8 @@ namespace vshaderc::cli
             if (s == "vert" || s == "vertex") return ShaderStage::eVert;
             if (s == "frag" || s == "fragment") return ShaderStage::eFrag;
             if (s == "geom" || s == "geometry") return ShaderStage::eGeom;
+            if (s == "hull" || s == "tesc" || s == "tesscontrol") return ShaderStage::eHull;
+            if (s == "domain" || s == "tese" || s == "tesseval") return ShaderStage::eDomain;
             if (s == "comp" || s == "compute") return ShaderStage::eComp;
             if (s == "task") return ShaderStage::eTask;
             if (s == "mesh") return ShaderStage::eMesh;

@@ -19,6 +19,8 @@ namespace vshaderc
             case SLANG_STAGE_VERTEX: return ShaderStage::eVert;
             case SLANG_STAGE_FRAGMENT: return ShaderStage::eFrag;
             case SLANG_STAGE_GEOMETRY: return ShaderStage::eGeom;
+            case SLANG_STAGE_HULL: return ShaderStage::eHull;
+            case SLANG_STAGE_DOMAIN: return ShaderStage::eDomain;
             case SLANG_STAGE_COMPUTE: return ShaderStage::eComp;
             case SLANG_STAGE_AMPLIFICATION: return ShaderStage::eTask;
             case SLANG_STAGE_MESH: return ShaderStage::eMesh;

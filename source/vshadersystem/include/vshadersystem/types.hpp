@@ -11,6 +11,9 @@ namespace vshadersystem
     // ------------------------------------------------------------
     // Shader stage
     // ------------------------------------------------------------
+    // NOTE: this value is serialized as a uint8 into the .vshlib variant key, so new
+    // enumerators must be APPENDED - inserting one mid-enum invalidates every library
+    // cooked by an older build.
     enum class ShaderStage : uint8_t
     {
         eUnknown = 0,
@@ -25,6 +28,8 @@ namespace vshadersystem
         eRchit,
         eRahit,
         eRint,
+        eHull,   // tessellation control (HLSL hull / GLSL .tesc)
+        eDomain, // tessellation evaluation (HLSL domain / GLSL .tese)
     };
 
     using ShaderStageFlags = uint32_t;
@@ -42,7 +47,9 @@ namespace vshadersystem
         eStageRmiss   = 1 << 7,
         eStageRchit   = 1 << 8,
         eStageRahit   = 1 << 9,
-        eStageRint    = 1 << 10
+        eStageRint    = 1 << 10,
+        eStageHull    = 1 << 11,
+        eStageDomain  = 1 << 12
     };
 
     // ------------------------------------------------------------

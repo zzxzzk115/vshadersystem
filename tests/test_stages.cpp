@@ -79,3 +79,49 @@ TEST_CASE("multi-stage single file: vertex+fragment+geometry coexist")
     CHECK(entry(c.value(), ShaderStage::eFrag));
     CHECK(entry(c.value(), ShaderStage::eGeom));
 }
+
+TEST_CASE("multi-stage single file: hull+domain tessellation coexist")
+{
+    const char* src = R"SLANG(
+        struct V { float4 pos : SV_Position; };
+        struct PC { float edges[4] : SV_TessFactor; float inside[2] : SV_InsideTessFactor; };
+
+        [shader("vertex")]
+        V vertexMain(uint vid : SV_VertexID) { V o; o.pos = (float4)0; return o; }
+
+        PC patchConstants(InputPatch<V, 4> patch)
+        {
+            PC pc;
+            for (int e = 0; e < 4; ++e) pc.edges[e] = 2.0;
+            pc.inside[0] = 2.0; pc.inside[1] = 2.0;
+            return pc;
+        }
+
+        [shader("hull")]
+        [domain("quad")]
+        [partitioning("fractional_odd")]
+        [outputtopology("triangle_cw")]
+        [outputcontrolpoints(4)]
+        [patchconstantfunc("patchConstants")]
+        V hullMain(InputPatch<V, 4> patch, uint i : SV_OutputControlPointID) { return patch[i]; }
+
+        [shader("domain")]
+        [domain("quad")]
+        V domainMain(OutputPatch<V, 4> patch, float2 uv : SV_DomainLocation)
+        {
+            V o;
+            o.pos = lerp(lerp(patch[0].pos, patch[1].pos, uv.x), lerp(patch[3].pos, patch[2].pos, uv.x), uv.y);
+            return o;
+        }
+
+        [shader("fragment")]
+        float4 fragmentMain(V i) : SV_Target { return (float4)1; }
+    )SLANG";
+
+    auto c = compile(src, {}, opts(/*wgsl=*/false)); // tessellation has no WGSL target
+    REQUIRE(c.isOk());
+    CHECK(entry(c.value(), ShaderStage::eVert));
+    CHECK(entry(c.value(), ShaderStage::eHull));
+    CHECK(entry(c.value(), ShaderStage::eDomain));
+    CHECK(entry(c.value(), ShaderStage::eFrag));
+}
