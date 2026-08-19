@@ -2,7 +2,7 @@
 set_project("vshadersystem")
 
 -- set project version
-set_version("1.2.0")
+set_version("1.2.1")
 
 -- set language version: C++ 23
 set_languages("cxx23")

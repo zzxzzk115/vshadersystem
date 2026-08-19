@@ -344,6 +344,19 @@ namespace vshaderc
             coptions.push_back(e);
         }
 
+        // The SAME per-variant keyword defines the compile session gets. Without them this
+        // session preprocesses the module with every keyword undefined, so it reflects the BASE
+        // variant no matter which variant is being built - and since build_variants stores
+        // whatever comes back on that variant's binary, every variant of a shader carried the
+        // base variant's descriptor table while its bytecode was correctly specialized. A binding
+        // a keyword ADDS was then absent from the reflection of the very variant that uses it,
+        // which nothing downstream can diagnose: a consumer deriving a descriptor-set layout from
+        // it hands the pipeline a short set.
+        std::vector<slang::PreprocessorMacroDesc> macros;
+        macros.reserve(opt.defines.size());
+        for (const auto& d : opt.defines)
+            macros.push_back({d.name.c_str(), d.value.empty() ? "1" : d.value.c_str()});
+
         detail::MemoryFileSystem fs;
         const std::string        topPath = modulePath.empty() ? (moduleName + ".slang") : modulePath;
         detail::populate_filesystem(fs, opt, topPath, moduleSource);
@@ -355,8 +368,19 @@ namespace vshaderc
         sessionDesc.searchPaths          = searchPaths;
         sessionDesc.searchPathCount      = 1;
         sessionDesc.fileSystem           = &fs;
+        // Matrix layout decides the offsets and sizes reported for matrix block members, so the
+        // reflection session has to agree with the compile session or the layout it describes is
+        // not the layout that was compiled.
+        sessionDesc.defaultMatrixLayoutMode  = (opt.matrixLayout == MatrixLayout::Row)
+                                                   ? SLANG_MATRIX_LAYOUT_ROW_MAJOR
+                                                   : SLANG_MATRIX_LAYOUT_COLUMN_MAJOR;
         sessionDesc.compilerOptionEntries    = coptions.data();
         sessionDesc.compilerOptionEntryCount = static_cast<uint32_t>(coptions.size());
+        if (!macros.empty())
+        {
+            sessionDesc.preprocessorMacros     = macros.data();
+            sessionDesc.preprocessorMacroCount = static_cast<SlangInt>(macros.size());
+        }
 
         ComPtr<slang::ISession> session;
         if (SLANG_FAILED(global->createSession(sessionDesc, session.writeRef())))
