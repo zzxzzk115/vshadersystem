@@ -109,6 +109,11 @@ jobs:
             android: false
 
     runs-on: ${{ matrix.os }}
+    # Without this a hung runner sits on GitHub's 6-hour default and blocks the whole release,
+    # which is what an apt lock stall did once: the Linux jobs stopped at Install Linux
+    # Dependencies while the Android jobs ran the same apt line on the same image and finished.
+    # 60 minutes is well clear of the slowest real job (the arm64 cross build).
+    timeout-minutes: 60
 
     steps:
       - uses: actions/checkout@v4
@@ -165,7 +170,7 @@ jobs:
 
       - name: Install Linux Dependencies
         if: ${{ !matrix.android && matrix.plat == 'linux' }}
-        run: sudo apt-get update && sudo apt-get install build-essential cmake git clang libx11-dev -y
+        run: sudo DEBIAN_FRONTEND=noninteractive apt-get -o DPkg::Lock::Timeout=600 update && sudo DEBIAN_FRONTEND=noninteractive apt-get -o DPkg::Lock::Timeout=600 install build-essential cmake git clang libx11-dev -y
 
       - name: Setup Android SDK
         if: matrix.android
@@ -179,11 +184,11 @@ jobs:
 
       - name: Install Android Dependencies
         if: matrix.android
-        run: sudo apt-get update && sudo apt-get install build-essential cmake git clang ninja-build -y
+        run: sudo DEBIAN_FRONTEND=noninteractive apt-get -o DPkg::Lock::Timeout=600 update && sudo DEBIAN_FRONTEND=noninteractive apt-get -o DPkg::Lock::Timeout=600 install build-essential cmake git clang ninja-build -y
 
       - name: Install WASM Dependencies
         if: ${{ matrix.plat == 'wasm' && runner.os == 'Linux' }}
-        run: sudo apt-get update && sudo apt-get install build-essential cmake git clang ninja-build python3 -y
+        run: sudo DEBIAN_FRONTEND=noninteractive apt-get -o DPkg::Lock::Timeout=600 update && sudo DEBIAN_FRONTEND=noninteractive apt-get -o DPkg::Lock::Timeout=600 install build-essential cmake git clang ninja-build python3 -y
 
       - name: Setup Linux Cross Toolchains
         if: ${{ !matrix.android && matrix.plat == 'linux' }}
@@ -191,9 +196,9 @@ jobs:
         run: |
           set -euo pipefail
           if [ "${{ matrix.arch }}" = "x86" ]; then
-            sudo apt-get install -y gcc-multilib g++-multilib libc6-dev-i386
+            sudo DEBIAN_FRONTEND=noninteractive apt-get -o DPkg::Lock::Timeout=600 install -y gcc-multilib g++-multilib libc6-dev-i386
           elif [ "${{ matrix.arch }}" = "arm64" ]; then
-            sudo apt-get install -y gcc-aarch64-linux-gnu g++-aarch64-linux-gnu libc6-dev-arm64-cross
+            sudo DEBIAN_FRONTEND=noninteractive apt-get -o DPkg::Lock::Timeout=600 install -y gcc-aarch64-linux-gnu g++-aarch64-linux-gnu libc6-dev-arm64-cross
           fi
 
       - name: Install Android NDK

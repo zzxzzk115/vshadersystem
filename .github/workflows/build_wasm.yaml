@@ -26,7 +26,7 @@ jobs:
           version: latest
 
       - name: Install dependencies
-        run: sudo apt-get update && sudo apt-get install build-essential cmake git clang ninja-build python3 -y
+        run: sudo DEBIAN_FRONTEND=noninteractive apt-get -o DPkg::Lock::Timeout=600 update && sudo DEBIAN_FRONTEND=noninteractive apt-get -o DPkg::Lock::Timeout=600 install build-essential cmake git clang ninja-build python3 -y
 
       - name: Configure WASM Build
         run: xmake f -p wasm -a wasm32 --policies=build.ccache:y -y

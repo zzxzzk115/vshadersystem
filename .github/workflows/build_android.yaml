@@ -23,7 +23,7 @@ jobs:
       - uses: android-actions/setup-android@v3
 
       - name: Install dependencies
-        run: sudo apt-get update && sudo apt-get install build-essential cmake git clang ninja-build -y
+        run: sudo DEBIAN_FRONTEND=noninteractive apt-get -o DPkg::Lock::Timeout=600 update && sudo DEBIAN_FRONTEND=noninteractive apt-get -o DPkg::Lock::Timeout=600 install build-essential cmake git clang ninja-build -y
 
       - name: Install Android NDK
         run: sdkmanager --sdk_root="${ANDROID_SDK_ROOT}" "ndk;30.0.14904198"

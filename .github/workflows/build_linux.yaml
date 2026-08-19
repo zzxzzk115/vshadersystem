@@ -30,7 +30,7 @@ jobs:
           build-cache: true
 
       - name: Install dependencies
-        run: sudo apt-get update && sudo apt-get install build-essential cmake git clang -y
+        run: sudo DEBIAN_FRONTEND=noninteractive apt-get -o DPkg::Lock::Timeout=600 update && sudo DEBIAN_FRONTEND=noninteractive apt-get -o DPkg::Lock::Timeout=600 install build-essential cmake git clang -y
 
       - name: Cache Build
         run: xmake f --policies=build.ccache:y -y
