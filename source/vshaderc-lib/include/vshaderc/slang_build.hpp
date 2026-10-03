@@ -10,6 +10,7 @@
 #include "vshadersystem/engine_keywords.hpp"
 #include "vshadersystem/types.hpp"
 
+#include <functional>
 #include <string>
 #include <utility>
 #include <vector>
@@ -47,6 +48,12 @@ namespace vshaderc
 
         // Safety cap on total permutation combinations (product of keyword domains).
         uint32_t maxVariants = 1u << 14;
+
+        // Called before compiling or skipping each permutation, with a 1-based index.
+        // Keyword values are borrowed for the duration of the callback. Library users
+        // remain silent unless they install a callback; the CLI uses this for live logs.
+        std::function<void(uint32_t, uint32_t,
+                           const std::vector<std::pair<std::string, uint32_t>>&, bool)> onVariant;
     };
 
     struct ShaderBuildResult
