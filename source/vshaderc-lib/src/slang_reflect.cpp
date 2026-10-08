@@ -424,7 +424,6 @@ namespace vshaderc
         return detail::reflect_program_layout(linked->getLayout(0, nullptr), meta);
     }
 
-
     static const MaterialFieldMeta* find_material_field(const ShaderMetadata& meta, const std::string& name)
     {
         for (const auto& field : meta.materialFields)
@@ -433,84 +432,82 @@ namespace vshaderc
         return nullptr;
     }
 
-    static void reflect_material_params(const BlockLayout* matBlock, const ShaderMetadata& meta,
-                                        MaterialDescription& mat)
+    static void
+    reflect_material_params(const BlockLayout* matBlock, const ShaderMetadata& meta, MaterialDescription& mat)
     {
-            if (matBlock)
+        if (matBlock)
+        {
+            mat.materialParamSize = matBlock->size;
+            for (const auto& m : matBlock->members)
             {
-                mat.materialParamSize = matBlock->size;
-                for (const auto& m : matBlock->members)
-                {
-                    const MaterialFieldMeta* fm = find_material_field(meta, m.name);
-                    // Texture index fields are surfaced as textures, not scalar params.
-                    if (fm && !fm->textureKind.empty())
-                        continue;
-                    MaterialParamDesc p;
-                    p.name     = m.name;
-                    p.type     = m.type;
-                    p.offset   = m.offset;
-                    p.size     = m.size;
-                    p.semantic = fm ? semantic_from_string(fm->semantic) : Semantic::eUnknown;
-                    if (fm && fm->hasRange)
-                    {
-                        p.hasRange  = true;
-                        p.range.min = fm->rangeLo;
-                        p.range.max = fm->rangeHi;
-                    }
-                    if (fm)
-                    {
-                        p.isColor     = fm->isColor;
-                        p.displayName = fm->displayName;
-                        if (fm->hasDefault)
-                        {
-                            p.hasDefault = true;
-                            parse_default(fm->defaultValue, p.type, p.defaultValue);
-                        }
-                    }
-                    mat.params.push_back(std::move(p));
-                }
-            }
-
-    }
-
-    static void reflect_material_textures(const ShaderMetadata& meta, const ShaderReflection& refl,
-                                          MaterialDescription& mat)
-    {
-            // Textures: material fields annotated with [VshTexture], matched to a
-            // reflected image descriptor by name when present.
-            for (const auto& f : meta.materialFields)
-            {
-                if (f.textureKind.empty())
+                const MaterialFieldMeta* fm = find_material_field(meta, m.name);
+                // Texture index fields are surfaced as textures, not scalar params.
+                if (fm && !fm->textureKind.empty())
                     continue;
-                MaterialTextureDesc td;
-                td.name     = f.name;
-                td.semantic = semantic_from_string(f.semantic);
-                td.type     = f.textureKind == "TextureCube"    ? TextureType::eTexCube
-                              : f.textureKind == "Texture3D"     ? TextureType::eTex3D
-                              : f.textureKind == "Texture2DArray" ? TextureType::eTex2DArray
-                                                                  : TextureType::eTex2D;
-                for (const auto& d : refl.descriptors)
+                MaterialParamDesc p;
+                p.name     = m.name;
+                p.type     = m.type;
+                p.offset   = m.offset;
+                p.size     = m.size;
+                p.semantic = fm ? semantic_from_string(fm->semantic) : Semantic::eUnknown;
+                if (fm && fm->hasRange)
                 {
-                    if ((d.kind == DescriptorKind::eSampledImage || d.kind == DescriptorKind::eStorageImage) &&
-                        d.name == f.name)
+                    p.hasRange  = true;
+                    p.range.min = fm->rangeLo;
+                    p.range.max = fm->rangeHi;
+                }
+                if (fm)
+                {
+                    p.isColor     = fm->isColor;
+                    p.displayName = fm->displayName;
+                    if (fm->hasDefault)
                     {
-                        td.set     = d.set;
-                        td.binding = d.binding;
-                        td.count   = d.count;
-                        td.type    = d.textureType != TextureType::eUnknown ? d.textureType : td.type;
-                        break;
+                        p.hasDefault = true;
+                        parse_default(fm->defaultValue, p.type, p.defaultValue);
                     }
                 }
-                mat.textures.push_back(std::move(td));
+                mat.params.push_back(std::move(p));
             }
+        }
     }
 
-    static void reflect_material(const ShaderMetadata& meta, const ShaderReflection& refl,
-                                 MaterialDescription& mat)
+    static void
+    reflect_material_textures(const ShaderMetadata& meta, const ShaderReflection& refl, MaterialDescription& mat)
+    {
+        // Textures: material fields annotated with [VshTexture], matched to a
+        // reflected image descriptor by name when present.
+        for (const auto& f : meta.materialFields)
+        {
+            if (f.textureKind.empty())
+                continue;
+            MaterialTextureDesc td;
+            td.name     = f.name;
+            td.semantic = semantic_from_string(f.semantic);
+            td.type     = f.textureKind == "TextureCube"    ? TextureType::eTexCube :
+                          f.textureKind == "Texture3D"      ? TextureType::eTex3D :
+                          f.textureKind == "Texture2DArray" ? TextureType::eTex2DArray :
+                                                              TextureType::eTex2D;
+            for (const auto& d : refl.descriptors)
+            {
+                if ((d.kind == DescriptorKind::eSampledImage || d.kind == DescriptorKind::eStorageImage) &&
+                    d.name == f.name)
+                {
+                    td.set     = d.set;
+                    td.binding = d.binding;
+                    td.count   = d.count;
+                    td.type    = d.textureType != TextureType::eUnknown ? d.textureType : td.type;
+                    break;
+                }
+            }
+            mat.textures.push_back(std::move(td));
+        }
+    }
+
+    static void reflect_material(const ShaderMetadata& meta, const ShaderReflection& refl, MaterialDescription& mat)
     {
         // --- material description: merge block layout with vsh metadata ---
-        
-        mat.renderState          = meta.renderState;
+
+        mat.renderState = meta.renderState;
         if (!meta.materialStructName.empty())
         {
             mat.materialBlockName = meta.materialStructName;
@@ -537,7 +534,7 @@ namespace vshaderc
 
     Result<ProgramReflection> detail::reflect_program_layout(slang::ProgramLayout* layout, const ShaderMetadata& meta)
     {
-        using R = Result<ProgramReflection>;
+        using R                     = Result<ProgramReflection>;
         ShaderStageFlags stageFlags = 0;
         if (!layout)
             return R::err({ErrorCode::eReflectError, "getLayout returned null"});
@@ -554,15 +551,32 @@ namespace vshaderc
                 continue;
             switch (shader_stage_from_slang(er->getStage()))
             {
-                case ShaderStage::eVert: stageFlags |= eStageVert; break;
-                case ShaderStage::eFrag: stageFlags |= eStageFrag; break;
-                case ShaderStage::eGeom: stageFlags |= eStageGeom; break;
-                case ShaderStage::eHull: stageFlags |= eStageHull; break;
-                case ShaderStage::eDomain: stageFlags |= eStageDomain; break;
-                case ShaderStage::eComp: stageFlags |= eStageComp; break;
-                case ShaderStage::eTask: stageFlags |= eStageTask; break;
-                case ShaderStage::eMesh: stageFlags |= eStageMesh; break;
-                default: break;
+                case ShaderStage::eVert:
+                    stageFlags |= eStageVert;
+                    break;
+                case ShaderStage::eFrag:
+                    stageFlags |= eStageFrag;
+                    break;
+                case ShaderStage::eGeom:
+                    stageFlags |= eStageGeom;
+                    break;
+                case ShaderStage::eHull:
+                    stageFlags |= eStageHull;
+                    break;
+                case ShaderStage::eDomain:
+                    stageFlags |= eStageDomain;
+                    break;
+                case ShaderStage::eComp:
+                    stageFlags |= eStageComp;
+                    break;
+                case ShaderStage::eTask:
+                    stageFlags |= eStageTask;
+                    break;
+                case ShaderStage::eMesh:
+                    stageFlags |= eStageMesh;
+                    break;
+                default:
+                    break;
             }
             if (er->getStage() == SLANG_STAGE_COMPUTE)
             {
