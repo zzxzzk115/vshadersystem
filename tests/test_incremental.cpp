@@ -243,3 +243,13 @@ TEST_CASE("Compiler identity participates in cache keys")
     vshaderc::detail::CookCache  b(f.dir / "cache", "compiler B");
     CHECK(a.key(f.dir / "main.slang", shader, options, {}) != b.key(f.dir / "main.slang", shader, options, {}));
 }
+
+TEST_CASE("Zero permutation cap rejects shaders without keywords")
+{
+    vshaderc::ShaderBuildOptions options;
+    options.shaderId    = "cap";
+    options.maxVariants = 0;
+    const auto result   = vshaderc::build_shader(vsht::compiler(), "cap", "cap.slang", shader, options);
+    REQUIRE_FALSE(result.isOk());
+    CHECK(result.error().code == vshadersystem::ErrorCode::eCompileError);
+}

@@ -81,6 +81,9 @@ namespace vshaderc
                     {ErrorCode::eCompileError, "permutation explosion exceeds cap " + std::to_string(opt.maxVariants)});
             total *= domain;
         }
+        if (total > opt.maxVariants)
+            return R::err(
+                {ErrorCode::eCompileError, "permutation explosion exceeds cap " + std::to_string(opt.maxVariants)});
         result.combinations     = static_cast<uint32_t>(total);
         result.fileDependencies = meta.fileDependencies;
 
@@ -193,14 +196,15 @@ namespace vshaderc
         }
         else
         {
-            std::atomic<size_t>       next {0};
-            std::vector<std::jthread> workers;
-            auto                      reportWorkerError = [&](const std::exception& ex) {
+            std::atomic<size_t> next {0};
+            auto                reportWorkerError = [&](const std::exception& ex) {
                 std::lock_guard lock(callbackMutex);
                 if (workerError.code == ErrorCode::eOk)
                     workerError = {ErrorCode::eCompileError, ex.what()};
                 failed = true;
             };
+            // Destroy/join threads before their error-reporting closure.
+            std::vector<std::jthread> workers;
             try
             {
                 for (size_t i = 0; i < count; ++i)
