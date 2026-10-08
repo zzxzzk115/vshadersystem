@@ -63,6 +63,71 @@ TEST_CASE("variant expansion: cartesian product, distinct variant hashes")
     CHECK(hashes.size() == 6); // all distinct
 }
 
+TEST_CASE("variant progress reports resolved permutations and constraint skips")
+{
+    auto kw = parse_engine_keywords_vkw("keyword permute global FOG\n");
+    REQUIRE(kw.isOk());
+    kw.value().decls[0].constraint = "FOG";
+
+    vshaderc::ShaderBuildOptions bo;
+    bo.shaderId = "test/progress";
+    bo.compile = opts(false);
+    bo.engineKeywords = &kw.value();
+    uint32_t calls = 0, skippedCalls = 0;
+    std::vector<std::vector<std::pair<std::string, uint32_t>>> compiledValues;
+    bo.onVariant = [&](uint32_t current, uint32_t total, const auto& values, bool skipped) {
+        CHECK(current == ++calls);
+        CHECK(total == 12); // FOG(2) x USE_SHADOW(2) x QUALITY(3)
+        REQUIRE(values.size() == 3);
+        CHECK(values[0].first == "FOG");
+        CHECK(skipped == (values[0].second == 0));
+        if (skipped)
+            ++skippedCalls;
+        else
+            compiledValues.push_back(values);
+    };
+    auto b = vshaderc::build_shader(compiler(), "test", "test.slang", kKeywordShader, bo);
+    REQUIRE(b.isOk());
+    CHECK(calls == b.value().combinations);
+    CHECK(skippedCalls == b.value().skipped);
+    REQUIRE(compiledValues.size() == b.value().variants.size());
+    for (size_t i = 0; i < compiledValues.size(); ++i)
+        CHECK(compiledValues[i] == b.value().variants[i].keywordValues);
+}
+
+TEST_CASE("variant progress identifies the permutation before compilation fails")
+{
+    const char* src = R"SLANG(
+        import vsh;
+        [VshKeyword("BROKEN", "bool", "permute", "global")]
+        void __vsh_meta() {}
+        [shader("fragment")]
+        float4 fragmentMain() : SV_Target
+        {
+        #if BROKEN
+            return missingSymbol;
+        #else
+            return (float4)1;
+        #endif
+        }
+    )SLANG";
+    vshaderc::ShaderBuildOptions bo;
+    bo.shaderId = "test/failure";
+    bo.compile = opts(false);
+    uint32_t last = 0, broken = 0;
+    bo.onVariant = [&](uint32_t current, uint32_t total, const auto& values, bool skipped) {
+        last = current;
+        CHECK(total == 2);
+        CHECK_FALSE(skipped);
+        REQUIRE(values.size() == 1);
+        broken = values[0].second;
+    };
+    auto b = vshaderc::build_shader(compiler(), "test", "test.slang", src, bo);
+    CHECK_FALSE(b.isOk());
+    CHECK(last == 2);
+    CHECK(broken == 1);
+}
+
 TEST_CASE("runtime variantHash matches the build-time hash (engine lookup parity)")
 {
     auto b = build(kKeywordShader, "test/kw");

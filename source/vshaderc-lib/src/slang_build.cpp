@@ -113,6 +113,9 @@ namespace vshaderc
                 }
             }
 
+            if (opt.onVariant)
+                opt.onVariant(static_cast<uint32_t>(combo + 1), result.combinations, kvs, !valid);
+
             if (valid)
             {
                 // Per-variant compile options: base + keyword macros (value-based; shaders

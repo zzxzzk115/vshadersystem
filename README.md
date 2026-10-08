@@ -129,7 +129,7 @@ resolve at compile time from any source location.
 vshaderc compile -i <in.slang> -o <out.vshbin> -S <stage> [-I <dir>] [-D K=V] [--no-wgsl]
          [--dxbc] [--dxil] [--matrix-layout column|row] [--id <id>]
 vshaderc build --shader_root <dir> -o <out.vshlib> [--keywords-file <vkw>] [-I <dir>] [--no-wgsl]
-         [--dxbc] [--dxil] [--matrix-layout column|row]
+         [--dxbc] [--dxil] [--matrix-layout column|row] [--quiet]
 vshaderc strip -i <in.vshlib> -o <out.vshlib> --api <list> | --keep <list>
 vshaderc pack-slang --root <dir> -o <out.vshslang> [--ext .slang]
 ```
@@ -137,7 +137,12 @@ vshaderc pack-slang --root <dir> -o <out.vshslang> [--ext .slang]
 - `compile` emits one binary (SPIR-V + WGSL) for the entry point of `-S <stage>`.
 - `build` recursively compiles `.slang` under `--shader_root`, expands permutation
   keywords (shader `[VshKeyword]` + engine `.vkw`), and writes a variant library. The
-  stable shader id is the path relative to the root (without extension).
+  stable shader id is the path relative to the root (without extension). By default,
+  it flushes a log before each shader and each permutation, including the current/total
+  count, resolved keyword values and constraint skips. The last permutation logged
+  identifies work in progress even if compilation stalls or fails. Shader completion
+  reports stage variants (one permutation can produce multiple stages). `--quiet`
+  suppresses progress while retaining the final summary and errors.
 - `strip` rewrites a `.vshlib` keeping only the bytecode for the requested targets, for
   release packaging (see below).
 - `pack-slang` bundles `.slang` sources for `import` reuse.

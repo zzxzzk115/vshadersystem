@@ -265,6 +265,13 @@ namespace vshaderc::cli
                 if (rel.size() > 6 && rel.substr(rel.size() - 6) == ".slang")
                     rel.resize(rel.size() - 6);
 
+                const bool quiet = args.has("--quiet");
+                if (!quiet)
+                {
+                    std::printf("[vshaderc] compiling %s\n", rel.c_str());
+                    std::fflush(stdout);
+                }
+
                 ShaderBuildOptions bo;
                 bo.shaderId             = rel;
                 bo.compile.emitWgsl     = !args.has("--no-wgsl");
@@ -278,10 +285,29 @@ namespace vshaderc::cli
                 if (!vkwPath.empty())
                     bo.engineKeywords = &engineKw;
 
+                if (!quiet)
+                    bo.onVariant = [&rel](uint32_t current, uint32_t total,
+                                          const std::vector<std::pair<std::string, uint32_t>>& values,
+                                          bool skipped) {
+                        std::printf("[vshaderc] %s: permutation %u/%u %s", rel.c_str(), current, total,
+                                    skipped ? "skipped" : "compiling");
+                        for (const auto& [name, value] : values)
+                            std::printf(" %s=%u", name.c_str(), value);
+                        std::printf("\n");
+                        std::fflush(stdout);
+                    };
+
                 auto br = build_shader(compiler, de.path().stem().string(), de.path().filename().string(),
                                        source, bo);
                 if (!br.isOk())
                     return (err(rel + ": " + br.error().message), 1);
+
+                if (!quiet)
+                {
+                    std::printf("[vshaderc] built %s: %zu stage variant(s), %u permutation(s) skipped\n",
+                                rel.c_str(), br.value().variants.size(), br.value().skipped);
+                    std::fflush(stdout);
+                }
 
                 for (const auto& v : br.value().variants)
                 {
@@ -427,7 +453,7 @@ namespace vshaderc::cli
                 "vshaderc (v1.1, Slang)\n"
                 "  compile -i <in.slang> -o <out.vshbin> [-S <stage>] [-I <dir>] [-D K=V] [--no-wgsl]\n"
                 "          [--dxbc] [--dxil] [--matrix-layout column|row] [--id <id>]\n"
-                "  build --shader_root <dir> -o <out.vshlib> [--keywords-file <vkw>] [-I <dir>] [--no-wgsl]\n"
+                "  build --shader_root <dir> -o <out.vshlib> [--keywords-file <vkw>] [-I <dir>] [--no-wgsl] [--quiet]\n"
                 "        [--dxbc] [--dxil] [--matrix-layout column|row]\n"
                 "  strip -i <in.vshlib> -o <out.vshlib> --api <list> | --keep <list>\n"
                 "  pack-slang --root <dir> -o <out.vshslang> [--ext .slang]\n"
