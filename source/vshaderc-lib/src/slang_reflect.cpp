@@ -532,6 +532,22 @@ namespace vshaderc
         }
     }
 
+    static ShaderStageFlags stage_flag(ShaderStage stage)
+    {
+        switch (stage)
+        {
+            case ShaderStage::eVert: return eStageVert;
+            case ShaderStage::eFrag: return eStageFrag;
+            case ShaderStage::eGeom: return eStageGeom;
+            case ShaderStage::eHull: return eStageHull;
+            case ShaderStage::eDomain: return eStageDomain;
+            case ShaderStage::eComp: return eStageComp;
+            case ShaderStage::eTask: return eStageTask;
+            case ShaderStage::eMesh: return eStageMesh;
+            default: return 0;
+        }
+    }
+
     Result<ProgramReflection> detail::reflect_program_layout(slang::ProgramLayout* layout, const ShaderMetadata& meta)
     {
         using R                     = Result<ProgramReflection>;
@@ -549,35 +565,7 @@ namespace vshaderc
             slang::EntryPointReflection* er = layout->getEntryPointByIndex(i);
             if (!er)
                 continue;
-            switch (shader_stage_from_slang(er->getStage()))
-            {
-                case ShaderStage::eVert:
-                    stageFlags |= eStageVert;
-                    break;
-                case ShaderStage::eFrag:
-                    stageFlags |= eStageFrag;
-                    break;
-                case ShaderStage::eGeom:
-                    stageFlags |= eStageGeom;
-                    break;
-                case ShaderStage::eHull:
-                    stageFlags |= eStageHull;
-                    break;
-                case ShaderStage::eDomain:
-                    stageFlags |= eStageDomain;
-                    break;
-                case ShaderStage::eComp:
-                    stageFlags |= eStageComp;
-                    break;
-                case ShaderStage::eTask:
-                    stageFlags |= eStageTask;
-                    break;
-                case ShaderStage::eMesh:
-                    stageFlags |= eStageMesh;
-                    break;
-                default:
-                    break;
-            }
+            stageFlags |= stage_flag(shader_stage_from_slang(er->getStage()));
             if (er->getStage() == SLANG_STAGE_COMPUTE)
             {
                 SlangUInt sizes[3] = {1, 1, 1};
