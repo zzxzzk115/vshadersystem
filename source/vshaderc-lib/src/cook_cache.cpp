@@ -136,6 +136,106 @@ namespace vshaderc::detail
                 throw std::runtime_error("cannot read compiler file: " + path.string());
             return hash;
         }
+
+        void collect_slang_files(const std::vector<fs::path>& directories, std::set<fs::path>& files)
+        {
+            for (const auto& directory : directories)
+            {
+                for (const auto& item : fs::directory_iterator(directory))
+                {
+                    const auto name = item.path().filename().string();
+                    if (name.starts_with("slang") || name.starts_with("libslang") || name.starts_with("dxcompiler") ||
+                        name.starts_with("dxil"))
+                    {
+                        if (item.is_directory())
+                        {
+                            for (const auto& child : fs::recursive_directory_iterator(item.path()))
+                                if (child.is_regular_file())
+                                    files.insert(child.path());
+                        }
+                        else if (item.is_regular_file())
+                            files.insert(item.path());
+                    }
+                }
+            }
+        }
+
+        std::vector<fs::path> backend_search_paths(const fs::path& exe, const fs::path& library)
+        {
+            std::vector<fs::path> search {exe.parent_path(), library.parent_path(), fs::current_path()};
+#ifdef _WIN32
+            std::wstring system(32768, L'\0');
+            system.resize(GetSystemDirectoryW(system.data(), static_cast<UINT>(system.size())));
+            search.emplace_back(system);
+#endif
+            for (const char* variable : {"PATH", "LD_LIBRARY_PATH", "DYLD_LIBRARY_PATH"})
+            {
+                const char*       env = std::getenv(variable);
+                std::stringstream parts(env ? env : "");
+                std::string       part;
+                while (std::getline(parts,
+                                    part,
+#ifdef _WIN32
+                                    ';'
+#else
+                                    ':'
+#endif
+                                    ))
+                    if (!part.empty())
+                        search.emplace_back(part);
+            }
+            return search;
+        }
+
+        void collect_native_files(std::ostringstream&          identity,
+                                  std::set<fs::path>&          files,
+                                  const std::vector<fs::path>& search)
+        {
+            for (const auto& directory : search)
+                for (const auto* name : {"dxcompiler.dll",
+                                         "dxil.dll",
+                                         "d3dcompiler_47.dll",
+                                         "fxc.exe",
+                                         "dxc.exe",
+                                         "libdxcompiler.so",
+                                         "libdxcompiler.dylib",
+                                         "libdxil.so",
+                                         "libdxil.dylib"})
+                {
+                    const auto      path = fs::absolute(directory / name).lexically_normal();
+                    std::error_code ec;
+                    field(identity, path.generic_string());
+                    field(identity, fs::is_regular_file(path, ec) ? "present" : "absent");
+                    if (!ec && fs::is_regular_file(path))
+                        files.insert(path);
+                }
+        }
+
+        bool read_dependency(const std::vector<uint8_t>& bytes, size_t& offset, FileDependency& dependency)
+        {
+            uint64_t length = 0, exists = 0, hash = 0;
+            if (!take(bytes, offset, length) || length > 1024 * 1024 || length > bytes.size() - offset)
+                return false;
+            std::string path(reinterpret_cast<const char*>(bytes.data() + offset), static_cast<size_t>(length));
+            offset += static_cast<size_t>(length);
+            if (!take(bytes, offset, exists) || exists > 1 || !take(bytes, offset, hash))
+                return false;
+            dependency = {std::move(path), exists != 0, hash};
+            return true;
+        }
+
+        bool read_cache_header(std::vector<uint8_t>& bytes, size_t& offset, uint64_t& count)
+        {
+            if (bytes.size() < 32)
+                return false;
+            size_t   tail     = bytes.size() - 8;
+            uint64_t checksum = 0;
+            if (!take(bytes, tail, checksum) || checksum != vshadersystem::xxhash64(bytes.data(), bytes.size() - 8))
+                return false;
+            bytes.resize(bytes.size() - 8);
+            uint64_t magic = 0;
+            return take(bytes, offset, magic) && magic == kMagic && take(bytes, offset, count) && count <= 100000;
+        }
     } // namespace
 
     FileDependency observe_file(const fs::path& path)
@@ -198,25 +298,7 @@ namespace vshaderc::detail
             throw std::runtime_error("cannot locate compiler/Slang binary for cache identity");
         files.insert(exe);
         files.insert(library);
-        for (const auto& directory : {exe.parent_path(), library.parent_path()})
-        {
-            for (const auto& item : fs::directory_iterator(directory))
-            {
-                const auto name = item.path().filename().string();
-                if (name.starts_with("slang") || name.starts_with("libslang") || name.starts_with("dxcompiler") ||
-                    name.starts_with("dxil"))
-                {
-                    if (item.is_directory())
-                    {
-                        for (const auto& child : fs::recursive_directory_iterator(item.path()))
-                            if (child.is_regular_file())
-                                files.insert(child.path());
-                    }
-                    else if (item.is_regular_file())
-                        files.insert(item.path());
-                }
-            }
-        }
+        collect_slang_files({exe.parent_path(), library.parent_path()}, files);
         std::ostringstream identity;
         field(identity, "vshaderc-cache-v1");
         field(identity, spGetBuildTagString());
@@ -227,46 +309,7 @@ namespace vshaderc::detail
         }
         if (nativeTargets)
         {
-            std::vector<fs::path> search {exe.parent_path(), library.parent_path(), fs::current_path()};
-#ifdef _WIN32
-            std::wstring system(32768, L'\0');
-            system.resize(GetSystemDirectoryW(system.data(), static_cast<UINT>(system.size())));
-            search.emplace_back(system);
-#endif
-            for (const char* variable : {"PATH", "LD_LIBRARY_PATH", "DYLD_LIBRARY_PATH"})
-            {
-                const char*       env = std::getenv(variable);
-                std::stringstream parts(env ? env : "");
-                std::string       part;
-                while (std::getline(parts,
-                                    part,
-#ifdef _WIN32
-                                    ';'
-#else
-                                    ':'
-#endif
-                                    ))
-                    if (!part.empty())
-                        search.emplace_back(part);
-            }
-            for (const auto& directory : search)
-                for (const auto* name : {"dxcompiler.dll",
-                                         "dxil.dll",
-                                         "d3dcompiler_47.dll",
-                                         "fxc.exe",
-                                         "dxc.exe",
-                                         "libdxcompiler.so",
-                                         "libdxcompiler.dylib",
-                                         "libdxil.so",
-                                         "libdxil.dylib"})
-                {
-                    const auto      path = fs::absolute(directory / name).lexically_normal();
-                    std::error_code ec;
-                    field(identity, path.generic_string());
-                    field(identity, fs::is_regular_file(path, ec) ? "present" : "absent");
-                    if (!ec && fs::is_regular_file(path))
-                        files.insert(path);
-                }
+            collect_native_files(identity, files, backend_search_paths(exe, library));
         }
         for (const auto& file : files)
         {
@@ -339,28 +382,17 @@ namespace vshaderc::detail
                          std::vector<FileDependency>&                  dependencies)
     {
         std::vector<uint8_t> bytes;
-        if (!read_bytes(m_directory / (key + ".vshcache"), bytes) || bytes.size() < 32)
-            return false;
-        size_t   tail     = bytes.size() - 8;
-        uint64_t checksum = 0;
-        if (!take(bytes, tail, checksum) || checksum != vshadersystem::xxhash64(bytes.data(), bytes.size() - 8))
-            return false;
-        bytes.resize(bytes.size() - 8);
-        size_t   offset = 0;
-        uint64_t magic = 0, count = 0;
-        if (!take(bytes, offset, magic) || magic != kMagic || !take(bytes, offset, count) || count > 100000)
+        size_t               offset = 0;
+        uint64_t             count  = 0;
+        if (!read_bytes(m_directory / (key + ".vshcache"), bytes) || !read_cache_header(bytes, offset, count))
             return false;
         std::vector<FileDependency> observed;
         for (uint64_t i = 0; i < count; ++i)
         {
-            uint64_t length = 0, exists = 0, hash = 0;
-            if (!take(bytes, offset, length) || length > 1024 * 1024 || length > bytes.size() - offset)
+            FileDependency dependency;
+            if (!read_dependency(bytes, offset, dependency))
                 return false;
-            std::string path(reinterpret_cast<const char*>(bytes.data() + offset), static_cast<size_t>(length));
-            offset += static_cast<size_t>(length);
-            if (!take(bytes, offset, exists) || exists > 1 || !take(bytes, offset, hash))
-                return false;
-            observed.push_back({std::move(path), exists != 0, hash});
+            observed.push_back(std::move(dependency));
         }
         if (!matches(observed))
             return false;
