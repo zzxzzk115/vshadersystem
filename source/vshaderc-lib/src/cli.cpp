@@ -149,6 +149,8 @@ namespace vshaderc::cli
 
             SlangCompileOptions co;
             co.emitWgsl = !args.has("--no-wgsl");
+            co.debugInfo = args.has("--debug-info");
+            co.optimize = args.has("--optimize");
             co.emitDxbc = args.has("--dxbc"); // Direct3D 12 SM5.1 (needs fxc; opt-in, Windows host)
             co.emitDxil = args.has("--dxil"); // Direct3D 12 SM6.0 (needs dxc; opt-in, Windows host)
             co.searchDirs.push_back(inPath.has_parent_path() ? inPath.parent_path().string() : ".");
@@ -275,6 +277,8 @@ namespace vshaderc::cli
                 ShaderBuildOptions bo;
                 bo.shaderId             = rel;
                 bo.compile.emitWgsl     = !args.has("--no-wgsl");
+                bo.compile.debugInfo    = args.has("--debug-info");
+                bo.compile.optimize     = args.has("--optimize");
                 bo.compile.emitDxbc     = args.has("--dxbc");
                 bo.compile.emitDxil     = args.has("--dxil");
                 bo.compile.matrixLayout = matrixLayout;
@@ -450,7 +454,7 @@ namespace vshaderc::cli
         void usage()
         {
             std::printf(
-                "vshaderc (v1.1, Slang)\n"
+                "vshaderc (v1.3, Slang)\n"
                 "  compile -i <in.slang> -o <out.vshbin> [-S <stage>] [-I <dir>] [-D K=V] [--no-wgsl]\n"
                 "          [--dxbc] [--dxil] [--matrix-layout column|row] [--id <id>]\n"
                 "  build --shader_root <dir> -o <out.vshlib> [--keywords-file <vkw>] [-I <dir>] [--no-wgsl] [--quiet]\n"
@@ -458,6 +462,8 @@ namespace vshaderc::cli
                 "  strip -i <in.vshlib> -o <out.vshlib> --api <list> | --keep <list>\n"
                 "  pack-slang --root <dir> -o <out.vshslang> [--ext .slang]\n"
                 "\n"
+                "  --debug-info     embed shader source, line and function information (Release too)\n"
+                "  --optimize       use Slang high optimization independently of --debug-info\n"
                 "  --dxbc / --dxil  also emit Direct3D 12 bytecode (SM5.1 via fxc / SM6.0 via dxc; Windows host)\n"
                 "  --matrix-layout  memory layout for matrix constants (default: column, matches glm/GLSL/Vulkan)\n"
                 "  strip --api      vulkan|opengl|metal (spirv), webgpu (wgsl), d3d12 (dxbc+dxil); or --keep\n"

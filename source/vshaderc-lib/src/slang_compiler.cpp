@@ -119,6 +119,15 @@ namespace vshaderc
             e.value.intValue0            = 1;
             coptions.push_back(e);
         }
+        // Debug metadata and optimization are independent of the host build mode.
+        // False preserves Slang's default optimization; it does not request -O0.
+        if (opt.optimize)
+        {
+            slang::CompilerOptionEntry e = {};
+            e.name                       = slang::CompilerOptionName::Optimization;
+            e.value.intValue0            = SLANG_OPTIMIZATION_LEVEL_HIGH;
+            coptions.push_back(e);
+        }
         if (opt.debugInfo)
         {
             slang::CompilerOptionEntry e = {};

@@ -143,6 +143,13 @@ vshaderc pack-slang --root <dir> -o <out.vshslang> [--ext .slang]
   identifies work in progress even if compilation stalls or fails. Shader completion
   reports stage variants (one permutation can produce multiple stages). `--quiet`
   suppresses progress while retaining the final summary and errors.
+- `compile` and `build` accept `--debug-info` to embed shader source, line and
+  function information for Nsight Graphics / RenderDoc, including in Release.
+  `--optimize` selects Slang's high optimization independently; debug information
+  never requests `-O0`. Without `--optimize`, the existing Slang defaults are kept.
+  For optimized profiling: `vshaderc build --shader_root shaders -o profile.vshlib
+  --no-wgsl --debug-info --optimize`. Re-cook when changing these options; the runtime
+  library preserves the SPIR-V metadata. C++ PDBs do not replace shader debug info.
 - `strip` rewrites a `.vshlib` keeping only the bytecode for the requested targets, for
   release packaging (see below).
 - `pack-slang` bundles `.slang` sources for `import` reuse.
