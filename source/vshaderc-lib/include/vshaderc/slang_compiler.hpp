@@ -78,6 +78,8 @@ namespace vshaderc
         // Memory layout for matrix constants (default column-major; see MatrixLayout).
         MatrixLayout matrixLayout = MatrixLayout::Column;
 
+        // Independent of Debug/Release: opt-in high optimization, otherwise Slang defaults.
+        // debugInfo emits source/line/function metadata without disabling optimization.
         bool optimize  = false;
         bool debugInfo = false;
     };

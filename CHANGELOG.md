@@ -1,5 +1,13 @@
 # Changelog
 
+## v1.3.0
+
+- `vshaderc compile` / `build`: expose `--debug-info` for SPIR-V source, line and
+  function information in Debug and Release, independently of optimization.
+- `--optimize` and the existing API `optimize` option select Slang high optimization.
+- Live shader/permutation progress and `--quiet` (PR #1).
+- Android CI and release builds install supported SDK packages.
+
 ## v1.2.1
 
 - **Fix: reflection now describes the variant it is stored on.** `reflect_shader` built its own
