@@ -9,6 +9,7 @@ target("vshadersystem-tests")
     add_packages("slang-prebuilt", "doctest")
 
     add_files("test_*.cpp")
+    add_includedirs("../source/vshaderc-lib/src")
 
     if is_plat("macosx") then
         add_rpathdirs("@executable_path")

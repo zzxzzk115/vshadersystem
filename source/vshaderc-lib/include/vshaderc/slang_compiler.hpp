@@ -15,12 +15,15 @@
 #include "vshadersystem/result.hpp"
 #include "vshadersystem/types.hpp"
 
+#include <compare>
 #include <string>
 #include <utility>
 #include <vector>
 
 namespace vshaderc
 {
+    struct ShaderMetadata;
+
     using vshadersystem::Result;
     using vshadersystem::ShaderStage;
 
@@ -94,11 +97,23 @@ namespace vshaderc
         std::vector<uint8_t>  dxil;  // populated when emitDxil (empty if the host lacks dxc)
     };
 
+    // Observed disk content, including absent candidates that affect import resolution.
+    struct FileDependency
+    {
+        std::string path;
+        bool        exists                                   = false;
+        uint64_t    contentHash                              = 0;
+        auto        operator<=>(const FileDependency&) const = default;
+    };
+
     struct SlangCompileResult
     {
-        std::vector<SlangEntryPoint> entryPoints;
-        std::vector<std::string>     dependencies; // VFS/disk files the compile touched
-        std::string                  log;          // diagnostics (warnings, etc.)
+        std::vector<SlangEntryPoint>       entryPoints;
+        std::vector<std::string>           dependencies;     // VFS/disk files the compile touched
+        std::string                        log;              // diagnostics (warnings, etc.)
+        std::vector<FileDependency>        fileDependencies; // disk reads, including failed import probes
+        vshadersystem::ShaderReflection    reflection;       // populated by the metadata overload
+        vshadersystem::MaterialDescription material;
     };
 
     // Drives the Slang compiler in-process. Create once and reuse across compiles
@@ -118,10 +133,17 @@ namespace vshaderc
         // logical module name (no extension); `modulePath` is its logical path (used
         // for diagnostics and relative imports). All `[shader(...)]` entry points in
         // the module are compiled.
-        Result<SlangCompileResult> compileModule(const std::string&        moduleName,
-                                                 const std::string&        modulePath,
-                                                 const std::string&        moduleSource,
+        Result<SlangCompileResult> compileModule(const std::string&         moduleName,
+                                                 const std::string&         modulePath,
+                                                 const std::string&         moduleSource,
                                                  const SlangCompileOptions& opt);
+
+        // Compile and reflect the same linked program, avoiding a second load/link.
+        Result<SlangCompileResult> compileModule(const std::string&         moduleName,
+                                                 const std::string&         modulePath,
+                                                 const std::string&         moduleSource,
+                                                 const SlangCompileOptions& opt,
+                                                 const ShaderMetadata*      metadata);
 
         // Returns the underlying slang::IGlobalSession* (as void*) so sibling
         // translation units (e.g. metadata extraction) can reuse it without a header

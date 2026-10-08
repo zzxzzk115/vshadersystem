@@ -5,11 +5,15 @@
 // the configured search directories. Records every file it serves so the build can
 // track dependencies for caching.
 
+#include "vshaderc/slang_compiler.hpp"
+#include "vshadersystem/hash.hpp"
+
 #include <slang-com-ptr.h>
 #include <slang.h>
 
 #include <algorithm>
 #include <cstring>
+#include <filesystem>
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -58,7 +62,7 @@ namespace vshaderc::detail
             return r;
         }
         SLANG_NO_THROW void const* SLANG_MCALL getBufferPointer() override { return m_Data.data(); }
-        SLANG_NO_THROW size_t SLANG_MCALL getBufferSize() override { return m_Data.size(); }
+        SLANG_NO_THROW size_t SLANG_MCALL      getBufferSize() override { return m_Data.size(); }
 
     private:
         std::string m_Data;
@@ -71,13 +75,13 @@ namespace vshaderc::detail
     class MemoryFileSystem final : public ISlangFileSystem
     {
     public:
-        void addFile(const std::string& path, std::string text)
-        {
-            m_Files[normalize_vfs_path(path)] = std::move(text);
-        }
+        void addFile(const std::string& path, std::string text) { m_Files[normalize_vfs_path(path)] = std::move(text); }
         void addSearchDir(const std::string& dir) { m_SearchDirs.push_back(dir); }
 
         const std::vector<std::string>& dependencies() const { return m_Deps; }
+
+        // Includes successful disk reads and failed probes before the selected import.
+        const std::vector<FileDependency>& fileDependencies() const { return m_FileDeps; }
 
         // --- ISlangUnknown / ISlangCastable ---
         SLANG_NO_THROW SlangResult SLANG_MCALL queryInterface(SlangUUID const& uuid, void** outObject) override
@@ -90,9 +94,9 @@ namespace vshaderc::detail
             }
             return SLANG_E_NO_INTERFACE;
         }
-        SLANG_NO_THROW uint32_t SLANG_MCALL addRef() override { return 2; }   // non-owning; lifetime managed by caller
+        SLANG_NO_THROW uint32_t SLANG_MCALL addRef() override { return 2; } // non-owning; lifetime managed by caller
         SLANG_NO_THROW uint32_t SLANG_MCALL release() override { return 1; }
-        SLANG_NO_THROW void* SLANG_MCALL castAs(const SlangUUID& guid) override
+        SLANG_NO_THROW void* SLANG_MCALL    castAs(const SlangUUID& guid) override
         {
             if (guid == ISlangFileSystem::getTypeGuid() || guid == ISlangCastable::getTypeGuid() ||
                 guid == ISlangUnknown::getTypeGuid())
@@ -117,8 +121,7 @@ namespace vshaderc::detail
             // 2) suffix match (Slang may prepend a search dir we don't know about)
             for (const auto& [key, text] : m_Files)
             {
-                if (norm.size() >= key.size() &&
-                    norm.compare(norm.size() - key.size(), key.size(), key) == 0 &&
+                if (norm.size() >= key.size() && norm.compare(norm.size() - key.size(), key.size(), key) == 0 &&
                     (norm.size() == key.size() || norm[norm.size() - key.size() - 1] == '/'))
                 {
                     recordDep(key);
@@ -156,11 +159,15 @@ namespace vshaderc::detail
                 m_Deps.push_back(p);
         }
 
-        static ISlangBlob* tryDisk(const char* path)
+        ISlangBlob* tryDisk(const char* path)
         {
-            FILE* f = std::fopen(path, "rb");
+            const auto absolute = std::filesystem::absolute(path).lexically_normal().generic_string();
+            FILE*      f        = std::fopen(path, "rb");
             if (!f)
+            {
+                recordFile({absolute, false, 0});
                 return nullptr;
+            }
             std::string data;
             std::fseek(f, 0, SEEK_END);
             long sz = std::ftell(f);
@@ -172,11 +179,19 @@ namespace vshaderc::detail
                 data.resize(rd);
             }
             std::fclose(f);
+            recordFile({absolute, true, vshadersystem::xxhash64(data)});
             return new StringBlob(std::move(data));
+        }
+
+        void recordFile(FileDependency file)
+        {
+            if (std::find(m_FileDeps.begin(), m_FileDeps.end(), file) == m_FileDeps.end())
+                m_FileDeps.push_back(std::move(file));
         }
 
         std::unordered_map<std::string, std::string> m_Files;
         std::vector<std::string>                     m_SearchDirs;
         std::vector<std::string>                     m_Deps;
+        std::vector<FileDependency>                  m_FileDeps;
     };
 } // namespace vshaderc::detail

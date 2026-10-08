@@ -129,7 +129,8 @@ resolve at compile time from any source location.
 vshaderc compile -i <in.slang> -o <out.vshbin> -S <stage> [-I <dir>] [-D K=V] [--no-wgsl]
          [--dxbc] [--dxil] [--matrix-layout column|row] [--id <id>]
 vshaderc build --shader_root <dir> -o <out.vshlib> [--keywords-file <vkw>] [-I <dir>] [--no-wgsl]
-         [--dxbc] [--dxil] [--matrix-layout column|row] [--quiet]
+         [--dxbc] [--dxil] [--matrix-layout column|row] [--quiet] [--jobs N]
+         [--cache-dir <dir>] [--no-cache]
 vshaderc strip -i <in.vshlib> -o <out.vshlib> --api <list> | --keep <list>
 vshaderc pack-slang --root <dir> -o <out.vshslang> [--ext .slang]
 ```
@@ -153,6 +154,30 @@ vshaderc pack-slang --root <dir> -o <out.vshslang> [--ext .slang]
 - `strip` rewrites a `.vshlib` keeping only the bytecode for the requested targets, for
   release packaging (see below).
 - `pack-slang` bundles `.slang` sources for `import` reuse.
+
+### Incremental cooking
+
+`build` caches each shader's complete set of variants in `<output>.cache/`.
+An unchanged build reuses those variants; editing one shader rebuilds only that
+shader. Changing an imported file rebuilds its dependents, including transitive
+imports and imports selected only by a keyword variant. Content hashes are used,
+so restoring timestamps cannot hide an edit. Failed search candidates are tracked
+too: adding a module earlier in the search path invalidates the old resolution.
+
+Compiler/Slang binaries, builtin modules, engine keywords, targets, matrix layout,
+optimization and debug information all participate in invalidation. `--cache-dir`
+shares a cache between output locations; `--no-cache` forces a complete cook.
+Damaged cache entries are rebuilt. Failed cooks retain the previous library;
+unchanged output bytes retain their timestamp. Best-effort DXBC/DXIL failures are
+retried rather than cached as complete results.
+
+Cache misses compile permutations with up to four workers by default.
+`--jobs 1` selects serial compilation; `--jobs N` accepts 1 through 32.
+Each worker owns an independent Slang global session. Variants are serialized
+in stable order, and reflection comes from that variant's compiled program.
+The library API defaults to one worker; set `ShaderBuildOptions::jobs` to opt in.
+Parallel progress callbacks are serialized, can arrive out of order and execute
+on workers.
 
 Stages: `vert frag geom comp task mesh rgen rmiss rchit rahit rint`.
 
