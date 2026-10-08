@@ -242,6 +242,7 @@ namespace vshaderc
             }
         }
 
+        meta.fileDependencies = fs.fileDependencies();
         return R::ok(std::move(meta));
     }
 } // namespace vshaderc

@@ -62,6 +62,15 @@ namespace vshaderc
                                                             const std::string&        moduleSource,
                                                             const SlangCompileOptions& opt)
     {
+        return compileModule(moduleName, modulePath, moduleSource, opt, nullptr);
+    }
+
+    Result<SlangCompileResult> SlangCompiler::compileModule(const std::string& moduleName,
+                                                          const std::string& modulePath,
+                                                          const std::string& moduleSource,
+                                                          const SlangCompileOptions& opt,
+                                                          const ShaderMetadata* metadata)
+    {
         using R = Result<SlangCompileResult>;
         if (!isValid())
             return R::err({ErrorCode::eCompileError, "Slang global session unavailable"});
@@ -283,6 +292,15 @@ namespace vshaderc
             out.entryPoints.push_back(std::move(outEp));
         }
 
+        if (metadata)
+        {
+            auto reflected = detail::reflect_program_layout(layout, *metadata);
+            if (!reflected.isOk())
+                return R::err(reflected.error());
+            out.reflection = std::move(reflected.value().reflection);
+            out.material = std::move(reflected.value().material);
+        }
+        out.fileDependencies = fs.fileDependencies();
         out.dependencies = fs.dependencies();
         out.log          = std::move(logText);
         return R::ok(std::move(out));

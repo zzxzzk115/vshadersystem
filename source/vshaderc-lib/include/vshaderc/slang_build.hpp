@@ -24,8 +24,8 @@ namespace vshaderc
         std::string                entryPointName;
 
         // variantHash = hash(shaderIdHash, stage, resolved permute keyword values).
-        uint64_t                                       variantHash = 0;
-        std::vector<std::pair<std::string, uint32_t>>  keywordValues;
+        uint64_t                                      variantHash = 0;
+        std::vector<std::pair<std::string, uint32_t>> keywordValues;
 
         std::vector<uint32_t>              spirv;
         std::string                        wgsl;
@@ -51,9 +51,13 @@ namespace vshaderc
 
         // Called before compiling or skipping each permutation, with a 1-based index.
         // Keyword values are borrowed for the duration of the callback. Library users
+        // Parallel builds serialize callbacks but may report permutations out of order.
+        // Calls run on workers when jobs > 1. Library users
         // remain silent unless they install a callback; the CLI uses this for live logs.
-        std::function<void(uint32_t, uint32_t,
-                           const std::vector<std::pair<std::string, uint32_t>>&, bool)> onVariant;
+        std::function<void(uint32_t, uint32_t, const std::vector<std::pair<std::string, uint32_t>>&, bool)> onVariant;
+
+        // One global Slang session per worker. Library default preserves serial execution.
+        uint32_t jobs = 1;
     };
 
     struct ShaderBuildResult
@@ -67,6 +71,7 @@ namespace vshaderc
         uint32_t                                combinations = 0;
         uint32_t                                skipped      = 0;
         std::string                             log;
+        std::vector<FileDependency>             fileDependencies; // union across metadata and all permutations
     };
 
     Result<ShaderBuildResult> build_shader(SlangCompiler&            compiler,
@@ -78,7 +83,7 @@ namespace vshaderc
     // Convert a built variant into the serializable runtime ShaderBinary (computes
     // spirvHash, carries entry point name + keyword decls). `shaderIdHash` and
     // `keywords` come from ShaderBuildResult.
-    vshadersystem::ShaderBinary to_shader_binary(const VariantBinary&                            v,
-                                                 uint64_t                                        shaderIdHash,
+    vshadersystem::ShaderBinary to_shader_binary(const VariantBinary&                           v,
+                                                 uint64_t                                       shaderIdHash,
                                                  const std::vector<vshadersystem::KeywordDecl>& keywords = {});
 } // namespace vshaderc

@@ -1,5 +1,16 @@
 # Changelog
 
+## v1.4.0
+
+- Per-shader persistent cook cache, with content-based transitive dependencies and
+  failed import probes, compiler identity and compile-option invalidation.
+- `--cache-dir`, `--no-cache` and bounded `--jobs` permutation compilation.
+- Reuse each variant's compiled program for reflection, preserving keyword-specific
+  descriptor layouts without a second source load/link.
+- Atomic library/cache replacement, corruption recovery and unchanged-output mtime
+  preservation. Failed cooks keep the previous complete library.
+- No runtime format change. Existing cooked libraries remain compatible.
+
 ## v1.3.0
 
 - `vshaderc compile` / `build`: expose `--debug-info` for SPIR-V source, line and

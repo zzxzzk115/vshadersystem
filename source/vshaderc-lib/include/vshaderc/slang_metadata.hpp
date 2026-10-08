@@ -18,18 +18,18 @@ namespace vshaderc
     // A material struct field annotated with vsh attributes.
     struct MaterialFieldMeta
     {
-        std::string name;          // field name in the [VshMaterial] struct
-        std::string semantic;      // from [VshSemantic("...")], empty if none
+        std::string name;     // field name in the [VshMaterial] struct
+        std::string semantic; // from [VshSemantic("...")], empty if none
         bool        hasRange = false;
         float       rangeLo  = 0.0f;
         float       rangeHi  = 0.0f;
-        std::string textureKind;   // from [VshTexture("Texture2D")], empty if not a texture
+        std::string textureKind; // from [VshTexture("Texture2D")], empty if not a texture
 
         // Editor hints.
         bool        hasDefault = false;
-        std::string defaultValue;  // from [VshDefault("...")], comma-separated numbers
-        bool        isColor = false;     // from [VshColor]
-        std::string displayName;         // from [VshDisplayName("...")]
+        std::string defaultValue;    // from [VshDefault("...")], comma-separated numbers
+        bool        isColor = false; // from [VshColor]
+        std::string displayName;     // from [VshDisplayName("...")]
     };
 
     struct ShaderMetadata
@@ -43,9 +43,10 @@ namespace vshaderc
 
         // [VshRenderState(...)] -> merged render state. hasRenderState is true if any
         // VshRenderState attribute was present.
-        bool                       hasRenderState = false;
-        vshadersystem::RenderState renderState;
-        std::vector<std::pair<std::string, std::string>> renderStateRaw; // key,value (diagnostics)
+        bool                                             hasRenderState = false;
+        vshadersystem::RenderState                       renderState;
+        std::vector<std::pair<std::string, std::string>> renderStateRaw;   // key,value (diagnostics)
+        std::vector<FileDependency>                      fileDependencies; // disk reads and import-resolution probes
     };
 
     // Load a .slang module and read its vsh attributes via the Slang Reflection API.

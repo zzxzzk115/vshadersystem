@@ -12,6 +12,7 @@ target("vshaderc-lib")
     -- types.hpp / result.hpp come from the runtime library's public headers.
     add_deps("vshadersystem")
     add_packages("slang-prebuilt", {public = true})
+    if is_plat("linux") then add_syslinks("dl", "pthread", {public = true}) end
 
     set_targetdir("$(builddir)/$(plat)/$(arch)/$(mode)/vshaderc-lib")
 target_end()

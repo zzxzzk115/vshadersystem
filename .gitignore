@@ -28,3 +28,6 @@ vsxmake*/
 
 # Python cache
 __pycache__/
+
+# Offline compiler artifacts
+*.vshlib.cache/

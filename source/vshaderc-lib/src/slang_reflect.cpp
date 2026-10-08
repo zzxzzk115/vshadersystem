@@ -399,7 +399,6 @@ namespace vshaderc
 
         std::vector<slang::IComponentType*>     comps{module};
         std::vector<ComPtr<slang::IEntryPoint>> eps;
-        ShaderStageFlags                        stageFlags = 0;
         for (SlangInt32 i = 0, n = module->getDefinedEntryPointCount(); i < n; ++i)
         {
             ComPtr<slang::IEntryPoint> ep;
@@ -422,7 +421,13 @@ namespace vshaderc
         if (!linked)
             return R::err({ErrorCode::eReflectError, "link failed"});
 
-        slang::ProgramLayout* layout = linked->getLayout(0, nullptr);
+        return detail::reflect_program_layout(linked->getLayout(0, nullptr), meta);
+    }
+
+    Result<ProgramReflection> detail::reflect_program_layout(slang::ProgramLayout* layout, const ShaderMetadata& meta)
+    {
+        using R = Result<ProgramReflection>;
+        ShaderStageFlags stageFlags = 0;
         if (!layout)
             return R::err({ErrorCode::eReflectError, "getLayout returned null"});
 

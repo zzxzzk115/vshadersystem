@@ -8,7 +8,11 @@
 #include "vshadersystem/shader_id.hpp"
 #include "vshadersystem/variant_key.hpp"
 
+#include <algorithm>
+#include <atomic>
+#include <mutex>
 #include <string>
+#include <thread>
 
 namespace vshaderc
 {
@@ -25,8 +29,7 @@ namespace vshaderc
 
         // Collect permute keywords: engine decls first, then shader decls (shader wins on
         // name collision so a shader can refine an engine keyword).
-        std::vector<KeywordDecl> collect_permute_keywords(const ShaderMetadata&     meta,
-                                                          const EngineKeywordsFile* engine)
+        std::vector<KeywordDecl> collect_permute_keywords(const ShaderMetadata& meta, const EngineKeywordsFile* engine)
         {
             std::vector<KeywordDecl> out;
             auto                     add = [&](const KeywordDecl& k) {
@@ -69,38 +72,44 @@ namespace vshaderc
 
         const std::vector<KeywordDecl> perm = collect_permute_keywords(meta, opt.engineKeywords);
 
-        // Total combination count (product of domains), guarded by maxVariants.
         uint64_t total = 1;
         for (const auto& k : perm)
-            total *= keyword_domain(k);
-        if (total > opt.maxVariants)
-            return R::err({ErrorCode::eCompileError, "permutation explosion: " + std::to_string(total) +
-                                                         " combinations exceeds cap " +
-                                                         std::to_string(opt.maxVariants)});
-        result.combinations = static_cast<uint32_t>(total);
+        {
+            const auto domain = keyword_domain(k);
+            if (total > opt.maxVariants / domain)
+                return R::err(
+                    {ErrorCode::eCompileError, "permutation explosion exceeds cap " + std::to_string(opt.maxVariants)});
+            total *= domain;
+        }
+        result.combinations     = static_cast<uint32_t>(total);
+        result.fileDependencies = meta.fileDependencies;
 
-        // Constraint context: decls map stays constant; values updated per combo.
+        struct Job
+        {
+            std::vector<std::pair<std::string, uint32_t>> values;
+            bool                                          valid = true;
+        };
+        struct Output
+        {
+            std::vector<VariantBinary>  variants;
+            std::vector<FileDependency> dependencies;
+            Error                       error;
+        };
         std::unordered_map<std::string, const KeywordDecl*> declMap;
         for (const auto& k : perm)
             declMap[k.name] = &k;
-
-        // Iterate the cartesian product via a mixed-radix counter.
+        std::vector<Job>      jobs(static_cast<size_t>(total));
+        std::vector<Output>   outputs(jobs.size());
         std::vector<uint32_t> idx(perm.size(), 0);
-        for (uint64_t combo = 0; combo < total; ++combo)
+        for (auto& job : jobs)
         {
-            // Resolve this combination's keyword values.
-            std::vector<std::pair<std::string, uint32_t>> kvs;
-            KeywordValueContext                           ctx;
+            KeywordValueContext ctx;
             ctx.decls = declMap;
-            kvs.reserve(perm.size());
             for (size_t i = 0; i < perm.size(); ++i)
             {
-                kvs.emplace_back(perm[i].name, idx[i]);
+                job.values.emplace_back(perm[i].name, idx[i]);
                 ctx.values[perm[i].name] = idx[i];
             }
-
-            // Constraint pruning (only_if on engine keywords).
-            bool valid = true;
             for (const auto& k : perm)
             {
                 if (k.constraint.empty())
@@ -108,60 +117,11 @@ namespace vshaderc
                 auto ev = eval_only_if(k.constraint, ctx);
                 if (ev.isOk() && !ev.value())
                 {
-                    valid = false;
+                    job.valid = false;
+                    ++result.skipped;
                     break;
                 }
             }
-
-            if (opt.onVariant)
-                opt.onVariant(static_cast<uint32_t>(combo + 1), result.combinations, kvs, !valid);
-
-            if (valid)
-            {
-                // Per-variant compile options: base + keyword macros (value-based; shaders
-                // use `#if KEYWORD` / `#if KEYWORD == N`).
-                SlangCompileOptions co = opt.compile;
-                for (const auto& kv : kvs)
-                    co.defines.push_back({kv.first, std::to_string(kv.second)});
-
-                auto cr = compiler.compileModule(moduleName, modulePath, moduleSource, co);
-                if (!cr.isOk())
-                    return R::err(cr.error());
-
-                auto rr = reflect_shader(compiler, moduleName, modulePath, moduleSource, co, meta);
-                if (!rr.isOk())
-                    return R::err(rr.error());
-
-                for (const auto& ep : cr.value().entryPoints)
-                {
-                    if (ep.stage == ShaderStage::eUnknown)
-                        continue;
-                    VariantKey key;
-                    key.setShaderIdHash(result.shaderIdHash);
-                    key.setStage(ep.stage);
-                    for (const auto& kv : kvs)
-                        key.set(kv.first, kv.second);
-
-                    VariantBinary vb;
-                    vb.stage          = ep.stage;
-                    vb.entryPointName = ep.name;
-                    vb.keywordValues  = kvs;
-                    vb.variantHash    = key.build();
-                    vb.spirv          = ep.spirv;
-                    vb.wgsl           = ep.wgsl;
-                    vb.dxbc           = ep.dxbc;
-                    vb.dxil           = ep.dxil;
-                    vb.reflection     = rr.value().reflection;
-                    vb.material       = rr.value().material;
-                    result.variants.push_back(std::move(vb));
-                }
-            }
-            else
-            {
-                ++result.skipped;
-            }
-
-            // Advance mixed-radix counter.
             for (size_t i = 0; i < perm.size(); ++i)
             {
                 if (++idx[i] < keyword_domain(perm[i]))
@@ -170,11 +130,124 @@ namespace vshaderc
             }
         }
 
+        std::mutex        callbackMutex;
+        std::atomic<bool> failed {false};
+        auto              execute = [&](SlangCompiler& worker, size_t i) {
+            const auto& job    = jobs[i];
+            auto&       output = outputs[i];
+            try
+            {
+                if (opt.onVariant)
+                {
+                    std::lock_guard lock(callbackMutex);
+                    opt.onVariant(static_cast<uint32_t>(i + 1), result.combinations, job.values, !job.valid);
+                }
+                if (!job.valid)
+                    return;
+                SlangCompileOptions co = opt.compile;
+                for (const auto& kv : job.values)
+                    co.defines.push_back({kv.first, std::to_string(kv.second)});
+                auto cr = worker.compileModule(moduleName, modulePath, moduleSource, co, &meta);
+                if (!cr.isOk())
+                {
+                    output.error = cr.error();
+                    failed       = true;
+                    return;
+                }
+                output.dependencies = std::move(cr.value().fileDependencies);
+                for (auto& ep : cr.value().entryPoints)
+                {
+                    if (ep.stage == ShaderStage::eUnknown)
+                        continue;
+                    VariantKey key;
+                    key.setShaderIdHash(result.shaderIdHash);
+                    key.setStage(ep.stage);
+                    for (const auto& kv : job.values)
+                        key.set(kv.first, kv.second);
+                    VariantBinary vb;
+                    vb.stage          = ep.stage;
+                    vb.entryPointName = ep.name;
+                    vb.keywordValues  = job.values;
+                    vb.variantHash    = key.build();
+                    vb.spirv          = std::move(ep.spirv);
+                    vb.wgsl           = std::move(ep.wgsl);
+                    vb.dxbc           = std::move(ep.dxbc);
+                    vb.dxil           = std::move(ep.dxil);
+                    vb.reflection     = cr.value().reflection;
+                    vb.material       = cr.value().material;
+                    output.variants.push_back(std::move(vb));
+                }
+            }
+            catch (const std::exception& ex)
+            {
+                output.error = {ErrorCode::eCompileError, ex.what()};
+                failed       = true;
+            }
+        };
+        Error        workerError;
+        const size_t count = std::min<size_t>(std::clamp(opt.jobs, 1u, 32u), jobs.size());
+        if (count <= 1)
+        {
+            for (size_t i = 0; i < jobs.size() && !failed; ++i)
+                execute(compiler, i);
+        }
+        else
+        {
+            std::atomic<size_t>       next {0};
+            std::vector<std::jthread> workers;
+            auto                      reportWorkerError = [&](const std::exception& ex) {
+                std::lock_guard lock(callbackMutex);
+                if (workerError.code == ErrorCode::eOk)
+                    workerError = {ErrorCode::eCompileError, ex.what()};
+                failed = true;
+            };
+            try
+            {
+                for (size_t i = 0; i < count; ++i)
+                    workers.emplace_back([&] {
+                        try
+                        {
+                            // Slang's global session is not thread-safe. Never share the caller's session.
+                            SlangCompiler worker;
+                            while (!failed)
+                            {
+                                const auto j = next.fetch_add(1);
+                                if (j >= jobs.size())
+                                    break;
+                                execute(worker, j);
+                            }
+                        }
+                        catch (const std::exception& ex)
+                        {
+                            reportWorkerError(ex);
+                        }
+                    });
+            }
+            catch (const std::exception& ex)
+            {
+                reportWorkerError(ex);
+            }
+        } // jthread joins before outputs or metadata are read/destroyed
+        if (workerError.code != ErrorCode::eOk)
+            return R::err(workerError);
+        for (auto& output : outputs)
+        {
+            if (output.error.code != ErrorCode::eOk)
+                return R::err(output.error);
+            for (auto& variant : output.variants)
+                result.variants.push_back(std::move(variant));
+            result.fileDependencies.insert(
+                result.fileDependencies.end(), output.dependencies.begin(), output.dependencies.end());
+        }
+        std::sort(result.fileDependencies.begin(), result.fileDependencies.end());
+        result.fileDependencies.erase(std::unique(result.fileDependencies.begin(), result.fileDependencies.end()),
+                                      result.fileDependencies.end());
+
         return R::ok(std::move(result));
     }
 
-    ShaderBinary to_shader_binary(const VariantBinary& v, uint64_t shaderIdHash,
-                                  const std::vector<KeywordDecl>& keywords)
+    ShaderBinary
+    to_shader_binary(const VariantBinary& v, uint64_t shaderIdHash, const std::vector<KeywordDecl>& keywords)
     {
         ShaderBinary b;
         b.shaderIdHash   = shaderIdHash;

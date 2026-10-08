@@ -3,6 +3,7 @@
 // Internal helpers shared by the compile and metadata-extraction paths.
 
 #include "vshaderc/slang_compiler.hpp"
+#include "vshaderc/slang_reflect.hpp"
 
 #include "slang_vfs.hpp"
 
@@ -10,6 +11,8 @@
 
 namespace vshaderc::detail
 {
+    Result<ProgramReflection> reflect_program_layout(slang::ProgramLayout* layout, const ShaderMetadata& meta);
+
     // Logical path of the builtin vsh attribute module (auto-mounted into every compile).
     inline constexpr const char* kVshModulePath = "vsh.slang";
 
