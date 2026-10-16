@@ -31,7 +31,7 @@ flowchart LR
     D --> E[".vshlib<br/>Runtime shader library"]
 ```
 
-Expand Slang keyword variants, compile shader stages, and bundle bytecode with reflection. [Diagram source and validation notes](docs/showcase.md).
+Expand Slang keyword variants, compile shader stages, and bundle bytecode with reflection.
 
 ## Overview
 
