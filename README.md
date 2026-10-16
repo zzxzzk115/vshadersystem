@@ -21,6 +21,18 @@
 > attributes** read back through the Slang reflection API. On-disk formats are a clean
 > break and are **not** backward compatible with pre-1.0 `.vshbin`/`.vshlib`/`.vshader`.
 
+## Pipeline
+
+```mermaid
+flowchart LR
+    A["Slang shaders<br/>Vsh attributes"] --> B["Keyword permutations<br/>Material + global keywords"]
+    B --> C["Slang compilation<br/>Per stage and variant"]
+    C --> D["Bytecode + reflection<br/>SPIR-V · WGSL"]
+    D --> E[".vshlib<br/>Runtime shader library"]
+```
+
+Expand Slang keyword variants, compile shader stages, and bundle bytecode with reflection.
+
 ## Overview
 
 **vshadersystem** is the *engine-level advanced* layer on top of Slang: it adds materials,

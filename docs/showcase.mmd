@@ -1,0 +1,5 @@
+flowchart LR
+    A["Slang shaders<br/>Vsh attributes"] --> B["Keyword permutations<br/>Material + global keywords"]
+    B --> C["Slang compilation<br/>Per stage and variant"]
+    C --> D["Bytecode + reflection<br/>SPIR-V · WGSL"]
+    D --> E[".vshlib<br/>Runtime shader library"]
